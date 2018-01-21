@@ -33,10 +33,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // declaration, forward
 #define NUMSAMPLES 400 //
-#define NUMVARS 256// powers of two for now
+#define NUMVARS 16000// powers of two for now
 #define NUMMI NUMVARS*NUMVARS
 #define NUMBINS 25
-#define TPBX 16 //threads per block dim 16*16
+#define TPBX 32 //threads per block dim 16*16
 #define TOTAL NUMSAMPLES*NUMVARS*NUMBINS
 
 
