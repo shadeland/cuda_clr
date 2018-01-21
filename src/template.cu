@@ -58,7 +58,8 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, int numBins,
 	const int totalThreads = gridDim.x*blockDim.x;  // whic is actually numvars*numvars;
 
 	const int curMi = blockIdx.x * blockDim.x + threadIdx.x;
-	const int curVar  =  curMi/totalThreads;
+	const int curVar  =  curMi/NUMVARS;
+
 	int temp = 0;
 	int curVarWeightStart = curVar*NUMSAMPLES*NUMBINS;
 
