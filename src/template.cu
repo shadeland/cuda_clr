@@ -33,10 +33,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // declaration, forward
 #define NUMSAMPLES 400 //
-#define NUMVARS 1024// powers of two for now
+#define NUMVARS 256// powers of two for now
 #define NUMMI NUMVARS*NUMVARS
 #define NUMBINS 25
-#define TPB 512 //threads per block
+#define TPBX 16 //threads per block dim 16*16
 #define TOTAL NUMSAMPLES*NUMVARS*NUMBINS
 
 
@@ -57,21 +57,23 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, int numBins,
 		int numSamples) {
 	const int totalThreads = gridDim.x*blockDim.x;  // whic is actually numvars*numvars;
 
-	const int curMi = blockIdx.x * blockDim.x + threadIdx.x;
-	const int curVar  =  curMi/NUMVARS;
-
+	const int curMiX = blockIdx.x * blockDim.x + threadIdx.x;
+	const int curMiY = blockIdx.y * blockDim.y + threadIdx.y;
+	const int curVarX  = curMiX;
+	const int curVarY = curMiY;
 	int temp = 0;
-	int curVarWeightStart = curVar*NUMSAMPLES*NUMBINS;
+	int curVarXWeightStart = curVarX*NUMSAMPLES*NUMBINS;
+	int curVarYWeightStart = curVarY*NUMSAMPLES*NUMBINS;
 
 	for (int curBinX = 0; curBinX < numBins; ++curBinX) {
 		for (int curBinY = 0; curBinY < numBins; ++curBinY) {
 			for (int curSample = 0; curSample < numSamples; ++curSample) {
-				temp += d_w[curVarWeightStart+curBinY*numBins+curSample];
+				temp += d_w[curVarXWeightStart+curBinY*numBins+curSample]+d_w[curVarYWeightStart+curBinY*numBins+curSample];
 			}
 		}
 	}
 
-	d_out[curMi] = temp;
+	d_out[NUMVARS*curMiY+curMiX] = temp;
 
 }
 
@@ -119,10 +121,16 @@ int main() {
 	//copy w to dev
 	cudaMemcpy(d_w, h_w, TOTAL*sizeof(float), cudaMemcpyHostToDevice);
 
+	//config kernel
+	dim3 threadsPerBlock(TPBX, TPBX);
+	dim3 blocksPerGrid(NUMVARS/TPBX, NUMVARS/TPBX);
+
+
+
 	// Launch kernel to compute and store distance values
-	printf("Start Runing \n %d Samples \n %d vars \n %d bins \n %d blocksize \n\n",NUMSAMPLES , NUMVARS , NUMBINS , TPB);
+	printf("Start Runing \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize \n\n",NUMSAMPLES , NUMVARS , NUMBINS , TPBX,TPBX);
 	sdkStartTimer(&timer);
-	histo2dGlobal<<<NUMMI / TPB, TPB>>>(d_out,d_w, NUMBINS, NUMSAMPLES);
+	histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out,d_w, NUMBINS, NUMSAMPLES);
 	cudaDeviceSynchronize();
 	sdkStopTimer(&timer);
 	printf("Processing time GPU: %f (ms)\n", sdkGetTimerValue(&timer));
