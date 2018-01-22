@@ -34,10 +34,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // declaration, forward
 #define NUMSAMPLES 400 //
-#define NUMVARS 512// powers of two for now
+#define NUMVARS 4// powers of two for now
 #define NUMMI NUMVARS*NUMVARS
 #define NUMBINS 25
-#define BATCHSIZE 128 //128*128 batch size for hist mem management
+#define BATCHSIZE 2 //128*128 batch size for hist mem management
 #define TPBX 16//threads per block dim 16*16
 #define TOTAL NUMSAMPLES*NUMVARS*NUMBINS
 
@@ -67,7 +67,7 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
 	int histSize = numBins*numBins;
 	
 
-	int temp = 0;
+	float temp = 0;
 	int curVarXWeightStart = globalMiX*NUMSAMPLES*NUMBINS;
 	int curVarYWeightStart = globalMiY*NUMSAMPLES*NUMBINS;
 
@@ -82,12 +82,24 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
 		}
 	}
 
+	//Calc entropy on h2d
+	float incr = 0;
+	float H2D = 0;
+	for (int curBinX = 0; curBinX < numBins; ++curBinX) {
+			for (int curBinY = 0; curBinY < numBins; ++curBinY) {
+				incr = d_hist2d[curHistStart+curBinX*numBins+curBinY];
+				if(incr > 0){
+					H2D -= incr*log2f(incr); //calc entropy of current MI
+				}
+			}
+	}
+
 
 	
 
 	
 	// __syncthreads();
-	// d_out[NUMVARS*globalMiX+globalMiY] = temp;
+	d_out[NUMVARS*globalMiX+globalMiY] = H2D;
 
 }
 
