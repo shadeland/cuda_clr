@@ -7,7 +7,7 @@
 
 #ifndef TEMPLATE_CPU_H_
 #define TEMPLATE_CPU_H_
-#define RAND_MAX 10
+// #define RAND_MAX 10
 
 void randomI(float *data, int size);
 

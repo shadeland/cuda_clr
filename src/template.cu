@@ -34,10 +34,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // declaration, forward
 #define NUMSAMPLES 400 //
-#define NUMVARS 16000// powers of two for now
+#define NUMVARS 128// powers of two for now
 #define NUMMI NUMVARS*NUMVARS
 #define NUMBINS 25
-#define TPBX 32 //threads per block dim 16*16
+#define TPBX 16 //threads per block dim 16*16
 #define TOTAL NUMSAMPLES*NUMVARS*NUMBINS
 
 
@@ -54,7 +54,7 @@ __device__ float distance(float x1, float x2) {
 }
 
 //this just uses 1dim blocks
-__global__ void histo2dGlobal(float *d_out, float *d_w, int numBins,
+__global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d, int numBins,
 		int numSamples) {
 	const int totalThreads = gridDim.x*blockDim.x;  // whic is actually numvars*numvars;
 
@@ -62,19 +62,30 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, int numBins,
 	const int curMiY = blockIdx.y * blockDim.y + threadIdx.y;
 	const int curVarX  = curMiX;
 	const int curVarY = curMiY;
+	int histSize = numBins*numBins;
+	
+
 	int temp = 0;
 	int curVarXWeightStart = curVarX*NUMSAMPLES*NUMBINS;
 	int curVarYWeightStart = curVarY*NUMSAMPLES*NUMBINS;
 
+	int curHistStart = (NUMVARS*curMiY+curMiX)*numBins*numBins;
+
 	for (int curBinX = 0; curBinX < numBins; ++curBinX) {
 		for (int curBinY = 0; curBinY < numBins; ++curBinY) {
 			for (int curSample = 0; curSample < numSamples; ++curSample) {
-				temp += d_w[curVarXWeightStart+curBinY*numBins+curSample]+d_w[curVarYWeightStart+curBinY*numBins+curSample];
+				temp += d_w[curVarXWeightStart+curBinY*numBins+curSample]*d_w[curVarYWeightStart+curBinY*numBins+curSample]/numSamples;
 			}
+			d_hist2d[curHistStart+curBinX*numBins+curBinY]= temp; 
 		}
 	}
 
-	d_out[NUMVARS*curMiY+curMiX] = temp;
+
+	
+
+	
+	// __syncthreads();
+	// d_out[NUMVARS*curMiY+curMiX] = temp;
 
 }
 
@@ -103,6 +114,7 @@ int main() {
 	float *d_out = 0;
 	float *h_w = 0;
 	float *d_w = 0;
+	float *d_hist2d =0 ;
 
 	// setup a time to calc the time
 	StopWatchInterface *timer = 0;
@@ -113,6 +125,7 @@ int main() {
 	// 1d for now
 	cudaMalloc(&d_out, NUMMI * sizeof(float));
 	cudaMalloc(&d_w, TOTAL * sizeof(float));
+	cudaMalloc(&d_hist2d, NUMBINS*NUMBINS*NUMMI*NUMMI*sizeof(float));
 
 	h_out = (float*) calloc(NUMMI,sizeof(float));
 	h_w  = (float *) calloc(TOTAL,sizeof(float)); // host mem for weights
@@ -133,7 +146,7 @@ int main() {
 	// Launch kernel to compute and store distance values
 	printf("Start Runing \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize \n\n",NUMSAMPLES , NUMVARS , NUMBINS , TPBX,TPBX);
 	sdkStartTimer(&timer);
-	histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out,d_w, NUMBINS, NUMSAMPLES);
+	histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out, d_w, d_hist2d, NUMBINS, NUMSAMPLES);
 	cudaDeviceSynchronize();
 	sdkStopTimer(&timer);
 	printf("Processing time GPU: %f (ms)\n", sdkGetTimerValue(&timer));
