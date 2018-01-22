@@ -20,7 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-
+//this change
 // includes CUDA
 #include <cuda_runtime.h>
 
@@ -37,7 +37,8 @@
 #define NUMVARS 128// powers of two for now
 #define NUMMI NUMVARS*NUMVARS
 #define NUMBINS 25
-#define TPBX 16 //threads per block dim 16*16
+#define BATCHSIZE 64 //128*128 batch size for hist mem management
+#define TPBX 16//threads per block dim 16*16
 #define TOTAL NUMSAMPLES*NUMVARS*NUMBINS
 
 
@@ -54,22 +55,23 @@ __device__ float distance(float x1, float x2) {
 }
 
 //this just uses 1dim blocks
-__global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d, int numBins,
-		int numSamples) {
+__global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
+	dim3 curBatch ,int numBins, int numSamples) {
+	
 	const int totalThreads = gridDim.x*blockDim.x;  // whic is actually numvars*numvars;
 
 	const int curMiX = blockIdx.x * blockDim.x + threadIdx.x;
 	const int curMiY = blockIdx.y * blockDim.y + threadIdx.y;
-	const int curVarX  = curMiX;
-	const int curVarY = curMiY;
+	const int globalMiX  = BATCHSIZE*curBatch.x+curMiX; //global MI
+	const int globalMiY = BATCHSIZE*curBatch.y+curMiY;;
 	int histSize = numBins*numBins;
 	
 
 	int temp = 0;
-	int curVarXWeightStart = curVarX*NUMSAMPLES*NUMBINS;
-	int curVarYWeightStart = curVarY*NUMSAMPLES*NUMBINS;
+	int curVarXWeightStart = globalMiX*NUMSAMPLES*NUMBINS;
+	int curVarYWeightStart = globalMiY*NUMSAMPLES*NUMBINS;
 
-	int curHistStart = (NUMVARS*curMiY+curMiX)*numBins*numBins;
+	int curHistStart = (BATCHSIZE*curMiY+curMiX)*numBins*numBins;
 
 	for (int curBinX = 0; curBinX < numBins; ++curBinX) {
 		for (int curBinY = 0; curBinY < numBins; ++curBinY) {
@@ -85,7 +87,7 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d, int num
 
 	
 	// __syncthreads();
-	// d_out[NUMVARS*curMiY+curMiX] = temp;
+	// d_out[NUMVARS*globalMiX+globalMiY] = temp;
 
 }
 
@@ -99,6 +101,34 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d, int num
 void genWeights(float *w, int numSamples, int numVars, int numBins){
 
 	randomI(w, numSamples*numVars*numBins);
+
+}
+
+// TO RUN EACH BATCH 
+void runBatch(int batchX, int batchY, float *d_w, float *d_out, float *d_hist2d, int numVars){
+	int startVarX = batchX*BATCHSIZE; //for memory indexing
+	int startVarY = batchY*BATCHSIZE; 
+	int endVarX = startVarX+BATCHSIZE;
+	int endVarY = startVarY+BATCHSIZE;
+
+	StopWatchInterface *timer = 0;// This can be shared
+	sdkCreateTimer(&timer);
+
+	dim3 curBatch(batchX, batchY);
+
+	dim3 threadsPerBlock(TPBX, TPBX);
+	dim3 blocksPerGrid((BATCHSIZE+TPBX-1)/TPBX, (BATCHSIZE+TPBX-1)/TPBX);
+
+	printf("Start Runing batch (%d,%d)  \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize \n\n"
+	,batchX, batchY, NUMSAMPLES , numVars , NUMBINS , TPBX,TPBX);
+	sdkStartTimer(&timer);
+	histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out, d_w, d_hist2d, curBatch,  NUMBINS, NUMSAMPLES);
+	cudaDeviceSynchronize();
+	sdkStopTimer(&timer);
+	printf("Processing time GPU for batch: %f (ms)\n", sdkGetTimerValue(&timer));
+	
+
+	
 
 }
 
@@ -125,7 +155,7 @@ int main() {
 	// 1d for now
 	cudaMalloc(&d_out, NUMMI * sizeof(float));
 	cudaMalloc(&d_w, TOTAL * sizeof(float));
-	cudaMalloc(&d_hist2d, NUMBINS*NUMBINS*NUMMI*NUMMI*sizeof(float));
+	cudaMalloc(&d_hist2d, NUMBINS*NUMBINS*BATCHSIZE*BATCHSIZE*sizeof(float));
 
 	h_out = (float*) calloc(NUMMI,sizeof(float));
 	h_w  = (float *) calloc(TOTAL,sizeof(float)); // host mem for weights
@@ -138,20 +168,32 @@ int main() {
 	cudaMemcpy(d_w, h_w, TOTAL*sizeof(float), cudaMemcpyHostToDevice);
 
 	//config kernel
-	dim3 threadsPerBlock(TPBX, TPBX);
-	dim3 blocksPerGrid(NUMVARS/TPBX, NUMVARS/TPBX);
+	
 
+	// runing batches 
+
+	int numBatches = (NUMVARS+BATCHSIZE-1)/BATCHSIZE; 
+	sdkStartTimer(&timer);
+	for(int curBatchX = 0; curBatchX <numBatches; ++curBatchX){
+
+		for(int curBatchY = 0; curBatchY <numBatches; ++curBatchY){
+			runBatch(curBatchX, curBatchY, d_w, d_out, d_hist2d, BATCHSIZE);
+		}
+
+	}
+	sdkStopTimer(&timer);
+	cudaMemcpy(h_out, d_out, NUMMI*sizeof(float), cudaMemcpyDeviceToHost);
 
 
 	// Launch kernel to compute and store distance values
-	printf("Start Runing \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize \n\n",NUMSAMPLES , NUMVARS , NUMBINS , TPBX,TPBX);
-	sdkStartTimer(&timer);
-	histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out, d_w, d_hist2d, NUMBINS, NUMSAMPLES);
-	cudaDeviceSynchronize();
-	sdkStopTimer(&timer);
-	printf("Processing time GPU: %f (ms)\n", sdkGetTimerValue(&timer));
+	// printf("Start Runing \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize \n\n",NUMSAMPLES , NUMVARS , NUMBINS , TPBX,TPBX);
+	// sdkStartTimer(&timer);
+	// histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out, d_w, d_hist2d, NUMBINS, NUMSAMPLES);
+	// cudaDeviceSynchronize();
+	// sdkStopTimer(&timer);
+	printf("Processing Total Time GPU: %f (ms)\n", sdkGetTimerValue(&timer));
 
-	cudaMemcpy(h_out, d_out, NUMMI*sizeof(float), cudaMemcpyDeviceToHost);
+	// cudaMemcpy(h_out, d_out, NUMMI*sizeof(float), cudaMemcpyDeviceToHost);
 
 
 
