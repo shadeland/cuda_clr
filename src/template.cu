@@ -34,10 +34,10 @@
 ////////////////////////////////////////////////////////////////////////////////
 // declaration, forward
 #define NUMSAMPLES 400 //
-#define NUMVARS 128// powers of two for now
+#define NUMVARS 512// powers of two for now
 #define NUMMI NUMVARS*NUMVARS
 #define NUMBINS 25
-#define BATCHSIZE 64 //128*128 batch size for hist mem management
+#define BATCHSIZE 128 //128*128 batch size for hist mem management
 #define TPBX 16//threads per block dim 16*16
 #define TOTAL NUMSAMPLES*NUMVARS*NUMBINS
 
