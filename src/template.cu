@@ -25,11 +25,12 @@
 #include <cuda_runtime.h>
 
 // includes, project
+// helper functions for SDK examples
+#include <helper_functions.h>
 #include <helper_cuda.h>
-#include <helper_functions.h> // helper functions for SDK examples
-
 
 #include "template_cpu.h"
+#include "InfoKit2.h"
 ////////////////////////////////////////////////////////////////////////////////
 // declaration, forward
 #define NUMSAMPLES 400 //
@@ -91,6 +92,8 @@ void genWeights(float *w, int numSamples, int numVars, int numBins){
 }
 
 int main() {
+
+	
 	const float ref = 0.5f;
 
 
