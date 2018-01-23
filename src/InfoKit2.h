@@ -10,6 +10,12 @@
 #define NUM_INTEGRAL_PTS 100
 #define PI 3.141592654
 
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 float simpson(float, float, int, float(*) (float, float*), float *);
 float normCdf(float, float, float);
 float normPdf (float, float *);
@@ -18,24 +24,30 @@ float fdr(const float *, int, float, int);
 void clrGauss(float*, float*, int);
 float log2f(float);
 double log2d(double);
-int compare_floats (const float *, const float *);
-int compare_doubles (const double *, const double *);
+int compare_floats (const void *, const void *);
+int compare_doubles (const void *, const void *);
 double iqr(double *, int);
 void clrUnweightedStouffer(float*, float*, int);
 double binWidth(double *, int);
 int* calcNumBins(double *, int, int, double);
-double max(const double*, int);
-double min(const double*, int);
+double maxd(const double*, int);
+double mind(const double*, int);
 int maxi(const int*, int);
 int mini(const int*, int);
 void xToZ(const double*, double*, int, int, int, double, double);
 void miSubMatrix(const double*, float*, int, int, int, int, int, int);
 double mediani(int *, int);
 double mean(double*, int);
-// double std(double*,int);
+double stdv(double*,int);
 double meani(int*, int);
 double stdi(int*,int);
 /* void SplineKnots(int*,int,int); */
 void knotVector(double*, int, int);
 void kldSubMarix(const double*, const double*, float*, int, int, int, int, int, int, int);
 void findWeights(const double *, const double *, double *, int, int, int, double, double);
+double entropy1d(const double *, const double *, double *, int, int, int);
+double entropy2d(const double *, const double *, const double *, const double *, const double*, int, int, int);
+
+#ifdef __cplusplus
+}
+#endif
