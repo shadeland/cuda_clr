@@ -33,14 +33,22 @@
 #include "InfoKit2.h"
 ////////////////////////////////////////////////////////////////////////////////
 // declaration, forward
-#define NUMSAMPLES 400 //
-#define NUMVARS 4// powers of two for now
-#define NUMMI NUMVARS*NUMVARS
-#define NUMBINS 25
-#define BATCHSIZE 2 //128*128 batch size for hist mem management
-#define TPBX 16//threads per block dim 16*16
-#define TOTAL NUMSAMPLES*NUMVARS*NUMBINS
+#define CNUMSAMPLES 400 //
+#define CNUMVARS 128// powers of two for now
+#define CNUMMI NUMVARS*NUMVARS
+#define CNUMBINS 25
+#define CBATCHSIZE 128 //128*128 batch size for hist mem management
+#define CTPBX 16//threads per block dim 16*16
+#define CTOTAL NUMSAMPLES*NUMVARS*NUMBINS
 
+ int NUMSAMPLES;
+ int NUMVARS;
+ int NUMMI ;
+ int NUMBINS;
+ int BATCHSIZE;
+ int TPBX ;
+ int TOTAL ;
+ int SPLINEORDER;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -55,8 +63,8 @@ __device__ float distance(float x1, float x2) {
 }
 
 //this just uses 1dim blocks
-__global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
-	dim3 curBatch ,int numBins, int numSamples) {
+__global__ void histo2dGlobal(float *d_out, double *d_w, float *d_hist2d,
+	dim3 curBatch ,int numBins, int numSamples, int BATCHSIZE, int NUMVARS) {
 	
 	const int totalThreads = gridDim.x*blockDim.x;  // whic is actually numvars*numvars;
 
@@ -68,15 +76,15 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
 	
 
 	float temp = 0;
-	int curVarXWeightStart = globalMiX*NUMSAMPLES*NUMBINS;
-	int curVarYWeightStart = globalMiY*NUMSAMPLES*NUMBINS;
+	int curVarXWeightStart = globalMiX*numSamples*numBins;
+	int curVarYWeightStart = globalMiY*numSamples*numBins;
 
 	int curHistStart = (BATCHSIZE*curMiY+curMiX)*numBins*numBins;
 
 	for (int curBinX = 0; curBinX < numBins; ++curBinX) {
 		for (int curBinY = 0; curBinY < numBins; ++curBinY) {
 			for (int curSample = 0; curSample < numSamples; ++curSample) {
-				temp += d_w[curVarXWeightStart+curBinY*numBins+curSample]*d_w[curVarYWeightStart+curBinY*numBins+curSample]/numSamples;
+				temp += (float) (d_w[curVarXWeightStart+curBinY*numBins+curSample]*d_w[curVarYWeightStart+curBinY*numBins+curSample])/numSamples;
 			}
 			d_hist2d[curHistStart+curBinX*numBins+curBinY]= temp; 
 		}
@@ -134,7 +142,7 @@ void runBatch(int batchX, int batchY, float *d_w, float *d_out, float *d_hist2d,
 	printf("Start Runing batch (%d,%d)  \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize \n\n"
 	,batchX, batchY, NUMSAMPLES , numVars , NUMBINS , TPBX,TPBX);
 	sdkStartTimer(&timer);
-	histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out, d_w, d_hist2d, curBatch,  NUMBINS, NUMSAMPLES);
+	histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out, d_w, d_hist2d, curBatch,  NUMBINS, NUMSAMPLES, BATCHSIZE, NUMVARS);
 	cudaDeviceSynchronize();
 	sdkStopTimer(&timer);
 	printf("Processing time GPU for batch: %f (ms)\n", sdkGetTimerValue(&timer));
@@ -144,11 +152,31 @@ void runBatch(int batchX, int batchY, float *d_w, float *d_out, float *d_hist2d,
 
 }
 
-int main() {
+void clac_numbins_entropies_wights(double data, float *entropies, double *w){
 
-	
-	const float ref = 0.5f;
 
+	double *knots = (double*) calloc(numBins + splineOrder, sizeof(double));
+	double *hist1 = (double*) calloc(numBins, sizeof(double));
+
+	////CALC KNOTS
+	knotVector(knots, NUMBINS, SPLINEORDER);
+
+
+	for(i=0; i<NUMVARS; i++){
+		findWeights(data+(i*NUMSAMPLES), knots, w+i*NUMSAMPLES*NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS, -1, -1);
+	}
+
+}
+
+int main(int argc, char **argv) {
+ NUMSAMPLES = atoi(argv[1]); //
+  NUMVARS = atoi(argv[2]);// powers of two for now
+ NUMMI = NUMVARS*NUMVARS;
+ NUMBINS = atoi(argv[3]);
+ BATCHSIZE = atoi(argv[4]); //128*128 batch size for hist mem management
+ TPBX = atoi(argv[5]);//threads per block dim 16*16
+ SPLINEORDER = 3;
+ TOTAL = NUMSAMPLES*NUMVARS*NUMBINS;
 
 
 	// Declare a pointer for an array of floats
@@ -156,6 +184,9 @@ int main() {
 	float *d_out = 0;
 	float *h_w = 0;
 	float *d_w = 0;
+	float *h_entrop1d=0;
+	float *d_entrop1d=0;
+	double  *h_data = 0;
 	float *d_hist2d =0 ;
 
 	// setup a time to calc the time
@@ -170,8 +201,9 @@ int main() {
 	cudaMalloc(&d_hist2d, NUMBINS*NUMBINS*BATCHSIZE*BATCHSIZE*sizeof(float));
 
 	h_out = (float*) calloc(NUMMI,sizeof(float));
-	h_w  = (float *) calloc(TOTAL,sizeof(float)); // host mem for weights
-
+	h_w  = (double *) calloc(TOTAL,sizeof(double)); // host mem for weights /// why double ? ???
+	h_data = (double *) calloc(NUMVARS*NUMSAMPLES, sizeof(double));
+	h_entrop1d = (float *) calloc (NUMVARS, sizeof(float));
 
 	// gen random weights
 	genWeights(h_w, NUMSAMPLES, NUMVARS, NUMBINS);
@@ -203,6 +235,8 @@ int main() {
 	// histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out, d_w, d_hist2d, NUMBINS, NUMSAMPLES);
 	// cudaDeviceSynchronize();
 	// sdkStopTimer(&timer);
+	printf("Finished Runing  \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize , %d batches \n\n",
+			NUMSAMPLES , NUMVARS	, NUMBINS , TPBX,TPBX, BATCHSIZE);
 	printf("Processing Total Time GPU: %f (ms)\n", sdkGetTimerValue(&timer));
 
 	// cudaMemcpy(h_out, d_out, NUMMI*sizeof(float), cudaMemcpyDeviceToHost);
