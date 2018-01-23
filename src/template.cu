@@ -118,14 +118,14 @@ __global__ void histo2dGlobal(float *d_out, double *d_w, float *d_hist2d,
 
 
 
-void genWeights(float *w, int numSamples, int numVars, int numBins){
+void genWeights(double *w, int numSamples, int numVars, int numBins){
 
 	randomI(w, numSamples*numVars*numBins);
 
 }
 
 // TO RUN EACH BATCH 
-void runBatch(int batchX, int batchY, float *d_w, float *d_out, float *d_hist2d, int numVars){
+void runBatch(int batchX, int batchY, double *d_w, float *d_out, float *d_hist2d, int numVars){
 	int startVarX = batchX*BATCHSIZE; //for memory indexing
 	int startVarY = batchY*BATCHSIZE; 
 	int endVarX = startVarX+BATCHSIZE;
@@ -152,18 +152,19 @@ void runBatch(int batchX, int batchY, float *d_w, float *d_out, float *d_hist2d,
 
 }
 
-void clac_numbins_entropies_wights(double data, float *entropies, double *w){
+void clac_numbins_entropies_wights(double *data, float *entropies, double *w){
 
 
-	double *knots = (double*) calloc(numBins + splineOrder, sizeof(double));
-	double *hist1 = (double*) calloc(numBins, sizeof(double));
+	double *knots = (double*) calloc(NUMBINS + SPLINEORDER, sizeof(double));
+	const double *hist1 = (double*) calloc(NUMBINS, sizeof(double));
 
 	////CALC KNOTS
 	knotVector(knots, NUMBINS, SPLINEORDER);
 
+	const double * knotsC= knots;
 
-	for(i=0; i<NUMVARS; i++){
-		findWeights(data+(i*NUMSAMPLES), knots, w+i*NUMSAMPLES*NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS, -1, -1);
+	for(int i = 0; i<NUMVARS; i++){
+		findWeights(data+(i*NUMSAMPLES),knotsC, w+i*NUMSAMPLES*NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS, -1, -1);
 	}
 
 }
@@ -182,8 +183,8 @@ int main(int argc, char **argv) {
 	// Declare a pointer for an array of floats
 	float *h_out = 0;
 	float *d_out = 0;
-	float *h_w = 0;
-	float *d_w = 0;
+	double *h_w = 0;
+	double *d_w = 0;
 	float *h_entrop1d=0;
 	float *d_entrop1d=0;
 	double  *h_data = 0;

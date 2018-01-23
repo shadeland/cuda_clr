@@ -38,7 +38,7 @@ computeGold(float *reference, float *idata, const unsigned int len)
 }
 
 
-void randomI(float *data, int size)
+void randomI(double *data, int size)
 {
     for (int i = 0; i < size; ++i)
         data[i] = rand()%11;
