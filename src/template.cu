@@ -77,7 +77,8 @@ __global__ void histo2dGlobal(float *d_out, double *d_w, float *d_hist2d,
 	const int curMiY = blockIdx.y * blockDim.y + threadIdx.y;
 	const int globalMiX = BATCHSIZE * curBatch.x + curMiX; //global MI
 	const int globalMiY = BATCHSIZE * curBatch.y + curMiY;
-	;
+	printf("%d x %d y \n", globalMiX, globalMiY);
+	printf("%d batch.x %d batch.y \n", curBatch.x, curBatch.y);
 	int histSize = numBins * numBins;
 
 	float temp = 0;
@@ -92,9 +93,11 @@ __global__ void histo2dGlobal(float *d_out, double *d_w, float *d_hist2d,
 		{
 			for (int curSample = 0; curSample < numSamples; ++curSample)
 			{
-				temp += (float)(d_w[curVarXWeightStart + curBinY * numBins + curSample] * d_w[curVarYWeightStart + curBinY * numBins + curSample]) / numSamples;
+				temp += (float)(d_w[(curVarXWeightStart + curBinX) * numBins + curSample] * d_w[(curVarYWeightStart + curBinY) * numBins + curSample]) / numSamples;
+//				printf("%d bx, %d by, %d s, %d mx, %d my \n",curBinX,curBinY,curSample,globalMiX,globalMiY);
 			}
-			d_hist2d[curHistStart + curBinX * numBins + curBinY] = temp;
+			d_hist2d[(curHistStart + curBinX) * numBins + curBinY] = temp;
+//			printf("%0.2f h2d \n",  d_hist2d[curHistStart + curBinX * numBins + curBinY]);
 			temp = 0;
 		}
 	}
@@ -106,16 +109,18 @@ __global__ void histo2dGlobal(float *d_out, double *d_w, float *d_hist2d,
 	{
 		for (int curBinY = 0; curBinY < numBins; ++curBinY)
 		{
-			incr = (double) d_hist2d[curHistStart + curBinX * numBins + curBinY];
+			incr = (double) d_hist2d[(curHistStart + curBinX) * numBins + curBinY];
+			printf("%0.2f incr \n",  d_hist2d[(curHistStart + curBinX) * numBins + curBinY]);
 			if (incr > 0)
 			{
-				H2D -= incr * log2d(incr); //calc entropy of current MI
+				H2D -= incr * log2(incr); //calc entropy of current MI
 			}
 		}
 	}
 
 	// __syncthreads();
-	d_out[NUMVARS * globalMiX + globalMiY] = (float) H2D;
+	d_out[(NUMVARS * globalMiX) + globalMiY] = (float) H2D;
+	printf("%d OUT %0.2f H2D",NUMVARS * globalMiX + globalMiY, H2D);
 }
 
 //////////// for benchmarking with CPU use template source
@@ -260,7 +265,7 @@ int main(int argc, char **argv)
 	sdkStopTimer(&timer);
 	cudaMemcpy(h_out, d_out, NUMMI * sizeof(float), cudaMemcpyDeviceToHost);
 	if (V == 1)
-		fprintMatf(fp, h_out, "ENTROPY2 MAT", NUMVARS, NUMSAMPLES);
+		fprintMatf(fp, h_out, "ENTROPY2 MAT", NUMVARS, NUMVARS);
 
 	// Launch kernel to compute and store distance values
 	// printf("Start Runing \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize \n\n",NUMSAMPLES , NUMVARS , NUMBINS , TPBX,TPBX);
