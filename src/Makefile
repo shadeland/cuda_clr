@@ -228,7 +228,7 @@ ALL_LDFLAGS += $(addprefix -Xlinker ,$(EXTRA_LDFLAGS))
 
 # Common includes and paths for CUDA
 INCLUDES  := -I../lib/common/inc
-LIBRARIES :=
+# LIBRARIES := -L. -lInfoKit2
 
 ################################################################################
 
@@ -269,15 +269,18 @@ else
 	@echo "Sample is ready - all dependencies have been met"
 endif
 
-#InfoKit2.o:InfoKit2.c
-#	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
-template.o:template.cu InfoKit2.c
+
+
+InfoKit2.o:InfoKit2.cpp
+	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
+
+template.o:template.cu
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
 template_cpu.o:template_cpu.cpp
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
-template: template.o template_cpu.o InfoKit2.o
+template: template.o template_cpu.o InfoKit2.o 
 	$(EXEC) $(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) -o $@ $+ $(LIBRARIES)
 #	$(EXEC) mkdir -p ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)
 #	$(EXEC) cp $@ ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)
@@ -286,7 +289,7 @@ run: build
 	$(EXEC) ./template
 
 clean:
-	rm -f template template.o template_cpu.o
+	rm -f template template.o template_cpu.o InfoKit2.o
 	rm -rf ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)/template
 
 clobber: clean

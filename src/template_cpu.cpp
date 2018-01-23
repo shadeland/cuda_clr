@@ -9,6 +9,7 @@
  *
  */
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "template_cpu.h"
 
@@ -44,6 +45,66 @@ void randomI(double *data, int size)
         data[i] = rand()%11;
 //        data[i] = 1;
 
+}
+
+void printMat(double *X, char *name, int numVars, int numSamples)
+{
+	printf("\n\n///////////// %s /////////////\n", name);
+
+	for (int curSample = 0; curSample < numSamples; ++curSample)
+	{
+		for (int curVar = 0; curVar < numVars; ++curVar)
+		{
+			// printf("%d",(curVar*numSamples+curSample));
+			printf(" %.2f", X[curVar * numSamples + curSample]);
+		}
+		printf("\n");
+	}
+}
+
+void printMatf(float *X, char *name, int numVars, int numSamples)
+{
+	printf("\n\n///////////// %s /////////////\n", name);
+
+	for (int curSample = 0; curSample < numSamples; ++curSample)
+	{
+		for (int curVar = 0; curVar < numVars; ++curVar)
+		{
+			// printf("%d",(curVar*numSamples+curSample));
+			printf(" %.5f", X[curVar * numSamples + curSample]);
+		}
+		printf("\n");
+	}
+}
+
+void fprintMat(FILE *fp, double *X, char *name, int numVars, int numSamples)
+{
+	fprintf(fp, "\n\n///////////// %s /////////////\n", name);
+
+	for (int curSample = 0; curSample < numSamples; ++curSample)
+	{
+		for (int curVar = 0; curVar < numVars; ++curVar)
+		{
+			// printf("%d",(curVar*numSamples+curSample));
+			fprintf(fp, " %.2f", X[curVar * numSamples + curSample]);
+		}
+		fprintf(fp, "\n");
+	}
+}
+
+void fprintMatf(FILE *fp, float *X, char *name, int numVars, int numSamples)
+{
+	fprintf(fp, "\n\n///////////// %s /////////////\n", name);
+
+	for (int curSample = 0; curSample < numSamples; ++curSample)
+	{
+		for (int curVar = 0; curVar < numVars; ++curVar)
+		{
+			// printf("%d",(curVar*numSamples+curSample));
+			fprintf(fp, " %.5f", X[curVar * numSamples + curSample]);
+		}
+		fprintf(fp, "\n");
+	}
 }
 
 

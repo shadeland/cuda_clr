@@ -43,7 +43,7 @@ float fdr(const float *p, int numElem, float alpha, int dependence) {
     tmp[i] = p[i];
   }
   
-  qsort(tmp, numElem, sizeof(float), (void*) compare_floats);
+  qsort(tmp, numElem, sizeof(float), compare_floats);
   
   if (dependence == INDEPENDENT || dependence == POSITIVE) {
     Cm = 1;
@@ -109,28 +109,34 @@ double log2d(double x) {
   return log(x)/log(2);
 }
 
-int compare_integers (const int *a, const int *b) {
-  if (*a < *b)
+int compare_integers (const void *a, const void *b) {
+ const int ab = *(const int *) a;
+ const int bb = *(const int *) b;  
+  if (ab < bb)
     return -1;
-  else if (*a > *b)
+  else if (ab > bb)
     return 1;
 	
   return 0;
 }
 
-int compare_floats (const float *a, const float *b) {
-  if (*a < *b)
+int compare_floats (const void *a, const void *b) {
+  const float ab = *(const float *) a;
+  const float bb = *(const float *) b;  
+  if (ab < bb)
     return -1;
-  else if (*a > *b)
+  else if (ab > bb)
     return 1;
 	
   return 0;
 }
 
-int compare_doubles (const double *a, const double *b) {
-  if (*a < *b)
+int compare_doubles (const void *a, const void *b) {
+ const double ab = *(const double *) a;
+const double bb = *(const double  *) b;  
+  if (ab < bb)
     return -1;
-  else if (*a > *b)
+  else if (ab > bb)
     return 1;
 	
   return 0;
@@ -146,7 +152,7 @@ double mean(double *data, int numSamples) {
   return mean / (double) numSamples;
 }
 
-double std(double *data, int numSamples) {
+double stdv(double *data, int numSamples) {
   int curSample;
   double m = mean(data, numSamples);
   double std = 0;
@@ -198,7 +204,7 @@ double mediani(int *data, int numElem) {
     dataCopy[i] = data[i];
   }
   /* sort */
-  qsort(dataCopy, numElem, sizeof(int), (void*) compare_integers);
+  qsort(dataCopy, numElem, sizeof(int), compare_integers);
   
   median = ((double)dataCopy[half] + (double)dataCopy[half + 1])/2.0;
   free(dataCopy);
@@ -332,7 +338,7 @@ void clrGauss(float *miMatrix, float *clrMatrix, int numVars) {
 
 /* zero-stage rule, see e.g. Wand M.P., Data-Based Choice of Histogram Bin Width */
 double binWidth(double *data, int numSamples) {
-  double s = std(data, numSamples);
+  double s = stdv(data, numSamples);
   double i = iqr(data, numSamples) / 1.349;
   double shat = s < i ? s : i;
   return 3.49*shat*(double)pow((double)numSamples, (double)-1/3);
@@ -340,9 +346,9 @@ double binWidth(double *data, int numSamples) {
 
 /* Operates on a matrix of data */
 int *calcNumBins(double *data, int numVars, int numSamples, double binMultiplier) {
-  int *binCount = calloc(numVars, sizeof(int));
+  int *binCount = (int*) calloc(numVars, sizeof(int));
   int curVar, curSample;
-  double *sData = calloc(numVars * numSamples, sizeof(double)); /* for sorted data */
+  double *sData = (double*) calloc(numVars * numSamples, sizeof(double)); /* for sorted data */
 	
   for (curVar = 0; curVar < numVars; curVar++)
     for (curSample = 0; curSample < numSamples; curSample++)
@@ -350,7 +356,7 @@ int *calcNumBins(double *data, int numVars, int numSamples, double binMultiplier
 	
 	
   for (curVar = 0; curVar < numVars; curVar++) {
-    qsort(sData + curVar * numSamples, numSamples, sizeof(double), (void*) compare_doubles);
+    qsort(sData + curVar * numSamples, numSamples, sizeof(double), compare_doubles);
     binCount[curVar] = (int) ceil((sData[curVar * numSamples + numSamples - 1] - sData[curVar * numSamples])/binWidth(sData + curVar * numSamples, numSamples)*binMultiplier);
   }
   free(sData);
@@ -410,7 +416,7 @@ void knotVector(double *v, int numBins, int splineOrder) {
   }
 }
 
-double max(const double *data, int numSamples) {
+double maxd(const double *data, int numSamples) {
   int curSample;
   double curMax = data[0];
 	
@@ -422,7 +428,7 @@ double max(const double *data, int numSamples) {
   return curMax;
 }
 
-double min(const double *data, int numSamples) {
+double mind(const double *data, int numSamples) {
   int curSample;
   double curMin = data[0];
 	
@@ -462,8 +468,8 @@ void xToZ(const double *fromData, double *toData, int numSamples, int splineOrde
   int curSample;
   
   if (xMin == -1 && xMax == -1) { /*then compute on the fly */
-	  xMin = min(fromData, numSamples);
-	  xMax = max(fromData, numSamples);
+	  xMin = mind(fromData, numSamples);
+	  xMax = maxd(fromData, numSamples);
   } /*else use provided values */
   
   for (curSample = 0; curSample < numSamples; curSample++) {
@@ -585,7 +591,7 @@ void miSubMatrix(const double *data, float *miMatrix, int numBins, int numVars, 
   int col, row, i;
 	
   double *knots = (double*) calloc(numBins + splineOrder, sizeof(double));
-  double *entropies = calloc(numVars - fromCol, sizeof(double));
+  double *entropies = (double*) calloc(numVars - fromCol, sizeof(double));
   double *weights = (double*)calloc((numVars - fromCol)*numSamples*numBins, sizeof(double));
   double *hist2 = (double*) calloc(numBins * numBins, sizeof(double));
   double *hist1 = (double*) calloc(numBins, sizeof(double));
@@ -633,10 +639,10 @@ void kldSubMatrix(const double *dataP, const double *dataQ, float *kldMatrix, in
   knotVector(knots, numBins, splineOrder);
   
   for (i = 0; i < numVars - fromCol; i++) {
-	  leftP = min(dataP + (i + fromCol) * numSamplesP, numSamplesP);
-	  leftQ = min(dataQ + (i + fromCol) * numSamplesQ, numSamplesQ);	  
-	  rightP = max(dataP + (i + fromCol) * numSamplesP, numSamplesP);
-	  rightQ = max(dataQ + (i + fromCol) * numSamplesQ, numSamplesQ);	  
+	  leftP = mind(dataP + (i + fromCol) * numSamplesP, numSamplesP);
+	  leftQ = mind(dataQ + (i + fromCol) * numSamplesQ, numSamplesQ);	  
+	  rightP = maxd(dataP + (i + fromCol) * numSamplesP, numSamplesP);
+	  rightQ = maxd(dataQ + (i + fromCol) * numSamplesQ, numSamplesQ);	  
 	  left = (leftP < leftQ) ? leftP : leftQ;
 	  right = (rightP > rightQ) ? rightP : rightQ;
 	  
