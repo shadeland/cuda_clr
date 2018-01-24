@@ -81,7 +81,7 @@ __global__ void histo2dGlobal(float *d_out, double *d_w, float *d_hist2d,
 	printf("%d batch.x %d batch.y \n", curBatch.x, curBatch.y);
 	int histSize = numBins * numBins;
 
-	float temp = 0;
+	double temp = 0;
 	int curVarXWeightStart = globalMiX * numSamples * numBins;
 	int curVarYWeightStart = globalMiY * numSamples * numBins;
 
@@ -93,11 +93,12 @@ __global__ void histo2dGlobal(float *d_out, double *d_w, float *d_hist2d,
 		{
 			for (int curSample = 0; curSample < numSamples; ++curSample)
 			{
-				temp += (float)(d_w[(curVarXWeightStart + curBinX) * numBins + curSample] * d_w[(curVarYWeightStart + curBinY) * numBins + curSample]) / numSamples;
-//				printf("%d bx, %d by, %d s, %d mx, %d my \n",curBinX,curBinY,curSample,globalMiX,globalMiY);
+				temp += (d_w[curVarXWeightStart + (curBinX * numBins) + curSample] * d_w[curVarYWeightStart + (curBinY * numBins) + curSample]) / numSamples;
+				printf("%d bx, %d by, %d s, %d mx, %d my, %0.2f wx, %0.2f wy, %0.2f temp \n",curBinX,curBinY,curSample,globalMiX,globalMiY, d_w[curVarXWeightStart + (curBinX * numBins) + curSample] ,
+				 d_w[curVarYWeightStart + (curBinY * numBins) + curSample], temp);
 			}
-			d_hist2d[(curHistStart + curBinX) * numBins + curBinY] = temp;
-//			printf("%0.2f h2d \n",  d_hist2d[curHistStart + curBinX * numBins + curBinY]);
+			d_hist2d[curHistStart + (curBinX * numBins) + curBinY] = temp;
+			printf("%0.2f h2d \n",  d_hist2d[curHistStart + curBinX * numBins + curBinY]);
 			temp = 0;
 		}
 	}
@@ -109,8 +110,8 @@ __global__ void histo2dGlobal(float *d_out, double *d_w, float *d_hist2d,
 	{
 		for (int curBinY = 0; curBinY < numBins; ++curBinY)
 		{
-			incr = (double) d_hist2d[(curHistStart + curBinX) * numBins + curBinY];
-			printf("%0.2f incr \n",  d_hist2d[(curHistStart + curBinX) * numBins + curBinY]);
+			incr = (double) d_hist2d[curHistStart + (curBinX * numBins) + curBinY];
+			printf("%0.2f incr \n",  d_hist2d[curHistStart + (curBinX * numBins) + curBinY]);
 			if (incr > 0)
 			{
 				H2D -= incr * log2(incr); //calc entropy of current MI
@@ -223,7 +224,7 @@ int main(int argc, char **argv)
 	// Allocate device memory to store the output array with size number  samples
 	// 1d for now
 	cudaMalloc(&d_out, NUMMI * sizeof(float));
-	cudaMalloc(&d_w, TOTAL * sizeof(float));
+	cudaMalloc(&d_w, TOTAL * sizeof(double));
 	cudaMalloc(&d_hist2d, NUMBINS * NUMBINS * BATCHSIZE * BATCHSIZE * sizeof(float));
 
 	h_out = (float *)calloc(NUMMI, sizeof(float));
@@ -246,7 +247,7 @@ int main(int argc, char **argv)
 		fprintMat(fp, h_w, "WEIGHT MAT", NUMVARS, NUMSAMPLES * NUMBINS);
 
 	//copy w to dev
-	cudaMemcpy(d_w, h_w, TOTAL * sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_w, h_w, TOTAL * sizeof(double), cudaMemcpyHostToDevice);
 
 	//config kernel
 
