@@ -105,7 +105,7 @@ float log2f(float x) {
   return log(x)/log(2);
 }
 
-double log2d(double x) {
+float log2d(float x) {
   return log(x)/log(2);
 }
 
@@ -120,7 +120,7 @@ int compare_integers (const void *a, const void *b) {
   return 0;
 }
 
-int compare_floats (const void *a, const void *b) {
+int compare_d (const void *a, const void *b) {
   const float ab = *(const float *) a;
   const float bb = *(const float *) b;  
   if (ab < bb)
@@ -131,9 +131,9 @@ int compare_floats (const void *a, const void *b) {
   return 0;
 }
 
-int compare_doubles (const void *a, const void *b) {
- const double ab = *(const double *) a;
-const double bb = *(const double  *) b;  
+int compare_floats (const void *a, const void *b) {
+ const float ab = *(const float *) a;
+const float bb = *(const float  *) b;  
   if (ab < bb)
     return -1;
   else if (ab > bb)
@@ -142,25 +142,25 @@ const double bb = *(const double  *) b;
   return 0;
 }
 
-double mean(double *data, int numSamples) {
+float mean(float *data, int numSamples) {
   int curSample;
-  double mean = 0;
+  float mean = 0;
 	
   for (curSample = 0; curSample < numSamples; curSample++) {
     mean += data[curSample];
   }
-  return mean / (double) numSamples;
+  return mean / (float) numSamples;
 }
 
-double stdv(double *data, int numSamples) {
+float stdv(float *data, int numSamples) {
   int curSample;
-  double m = mean(data, numSamples);
-  double std = 0;
+  float m = mean(data, numSamples);
+  float std = 0;
 	
   for (curSample = 0; curSample < numSamples; curSample++) {
     std += (data[curSample] - m)*(data[curSample] - m);
   }
-  return sqrt(1/(double)(numSamples - 1) * std);
+  return sqrt(1/(float)(numSamples - 1) * std);
 }
 
 float meanf(float *data, int numSamples) {
@@ -184,21 +184,21 @@ float stdf(float *data, int numSamples) {
   return sqrt(1/(float)(numSamples - 1) * std);
 }
 
-double meani(int *data, int numSamples) {
+float meani(int *data, int numSamples) {
   int curSample;
-  double mean = 0;
+  float mean = 0;
 	
   for (curSample = 0; curSample < numSamples; curSample++) {
-    mean += (double)data[curSample];
+    mean += (float)data[curSample];
   }
-  return mean / (double) numSamples;
+  return mean / (float) numSamples;
 }
 
-double mediani(int *data, int numElem) {
+float mediani(int *data, int numElem) {
   int *dataCopy = (int*) malloc(numElem * sizeof(int));
   int half = floor(numElem/2);
   int i;
-  double median;
+  float median;
 
   for (i = 0; i < numElem; i++) {
     dataCopy[i] = data[i];
@@ -206,25 +206,25 @@ double mediani(int *data, int numElem) {
   /* sort */
   qsort(dataCopy, numElem, sizeof(int), compare_integers);
   
-  median = ((double)dataCopy[half] + (double)dataCopy[half + 1])/2.0;
+  median = ((float)dataCopy[half] + (float)dataCopy[half + 1])/2.0;
   free(dataCopy);
   return median;
 }
 
-double stdi(int *data, int numSamples) {
+float stdi(int *data, int numSamples) {
   int curSample;
-  double m = meani(data, numSamples);
-  double std = 0;
+  float m = meani(data, numSamples);
+  float std = 0;
 	
   for (curSample = 0; curSample < numSamples; curSample++) {
-    std += (double) (data[curSample] - m)*(data[curSample] - m);
+    std += (float) (data[curSample] - m)*(data[curSample] - m);
   }
-  return sqrt(1/(double)(numSamples - 1) * std);
+  return sqrt(1/(float)(numSamples - 1) * std);
 }
 
 /* Accepts sorted input */
-double iqr(double *data, int numSamples) {
-  double q1, q3;
+float iqr(float *data, int numSamples) {
+  float q1, q3;
   int idx;
   numSamples = numSamples - 1; /* convert into indices */
 	
@@ -337,18 +337,18 @@ void clrGauss(float *miMatrix, float *clrMatrix, int numVars) {
 }
 
 /* zero-stage rule, see e.g. Wand M.P., Data-Based Choice of Histogram Bin Width */
-double binWidth(double *data, int numSamples) {
-  double s = stdv(data, numSamples);
-  double i = iqr(data, numSamples) / 1.349;
-  double shat = s < i ? s : i;
-  return 3.49*shat*(double)pow((double)numSamples, (double)-1/3);
+float binWidth(float *data, int numSamples) {
+  float s = stdv(data, numSamples);
+  float i = iqr(data, numSamples) / 1.349;
+  float shat = s < i ? s : i;
+  return 3.49*shat*(float)pow((float)numSamples, (float)-1/3);
 }
 
 /* Operates on a matrix of data */
-int *calcNumBins(double *data, int numVars, int numSamples, double binMultiplier) {
+int *calcNumBins(float *data, int numVars, int numSamples, float binMultiplier) {
   int *binCount = (int*) calloc(numVars, sizeof(int));
   int curVar, curSample;
-  double *sData = (double*) calloc(numVars * numSamples, sizeof(double)); /* for sorted data */
+  float *sData = (float*) calloc(numVars * numSamples, sizeof(float)); /* for sorted data */
 	
   for (curVar = 0; curVar < numVars; curVar++)
     for (curSample = 0; curSample < numSamples; curSample++)
@@ -356,7 +356,7 @@ int *calcNumBins(double *data, int numVars, int numSamples, double binMultiplier
 	
 	
   for (curVar = 0; curVar < numVars; curVar++) {
-    qsort(sData + curVar * numSamples, numSamples, sizeof(double), compare_doubles);
+    qsort(sData + curVar * numSamples, numSamples, sizeof(float), compare_floats);
     binCount[curVar] = (int) ceil((sData[curVar * numSamples + numSamples - 1] - sData[curVar * numSamples])/binWidth(sData + curVar * numSamples, numSamples)*binMultiplier);
   }
   free(sData);
@@ -364,8 +364,8 @@ int *calcNumBins(double *data, int numVars, int numSamples, double binMultiplier
 }
 
 /* Follows Daub et al, which contains mistakes; corrections based on spline descriptions on MathWorld pages */
-double basisFunction(int i, int p, double t, const double *kVector, int numBins) {
-  double d1, n1, d2, n2, e1, e2;
+float basisFunction(int i, int p, float t, const float *kVector, int numBins) {
+  float d1, n1, d2, n2, e1, e2;
   if (p == 1) {
     if ((t >= kVector[i] && t < kVector[i+1] && 
 	 kVector[i] < kVector[i+1]) ||
@@ -401,7 +401,7 @@ double basisFunction(int i, int p, double t, const double *kVector, int numBins)
 
 }
 
-void knotVector(double *v, int numBins, int splineOrder) {
+void knotVector(float *v, int numBins, int splineOrder) {
   int nInternalPoints = numBins - splineOrder;
   int i;
 
@@ -409,16 +409,16 @@ void knotVector(double *v, int numBins, int splineOrder) {
     v[i] = 0;
   }
   for (i = splineOrder; i < splineOrder + nInternalPoints; ++i) {
-    v[i] = (double)(i - splineOrder + 1)/(nInternalPoints + 1);
+    v[i] = (float)(i - splineOrder + 1)/(nInternalPoints + 1);
   }
   for (i = splineOrder + nInternalPoints; i < 2*splineOrder + nInternalPoints; ++i) {
     v[i] = 1;
   }
 }
 
-double maxd(const double *data, int numSamples) {
+float maxd(const float *data, int numSamples) {
   int curSample;
-  double curMax = data[0];
+  float curMax = data[0];
 	
   for (curSample = 1; curSample < numSamples; curSample++) {
     if (data[curSample] > curMax) {
@@ -428,9 +428,9 @@ double maxd(const double *data, int numSamples) {
   return curMax;
 }
 
-double mind(const double *data, int numSamples) {
+float mind(const float *data, int numSamples) {
   int curSample;
-  double curMin = data[0];
+  float curMin = data[0];
 	
   for (curSample = 1; curSample < numSamples; curSample++) {
     if (data[curSample] < curMin) {
@@ -464,7 +464,7 @@ int mini(const int *data, int numSamples) {
   return curMin;
 }
 
-void xToZ(const double *fromData, double *toData, int numSamples, int splineOrder, int numBins, double xMin, double xMax) {
+void xToZ(const float *fromData, float *toData, int numSamples, int splineOrder, int numBins, float xMin, float xMax) {
   int curSample;
   
   if (xMin == -1 && xMax == -1) { /*then compute on the fly */
@@ -473,16 +473,16 @@ void xToZ(const double *fromData, double *toData, int numSamples, int splineOrde
   } /*else use provided values */
   
   for (curSample = 0; curSample < numSamples; curSample++) {
-    /* toData[curSample] = (fromData[curSample] - xMin) * (numBins - splineOrder + 1) / (double) (xMax - xMin); */
+    /* toData[curSample] = (fromData[curSample] - xMin) * (numBins - splineOrder + 1) / (float) (xMax - xMin); */
     /* normalize to [0, 1] */
-    toData[curSample] = (fromData[curSample] - xMin) / (double) (xMax - xMin);
+    toData[curSample] = (fromData[curSample] - xMin) / (float) (xMax - xMin);
   }
 }
 
-void findWeights(const double *x, const double *knots, double *weights, int numSamples, int splineOrder, int numBins, double rangeLeft, double rangeRight) {
+void findWeights(const float *x, const float *knots, float *weights, int numSamples, int splineOrder, int numBins, float rangeLeft, float rangeRight) {
   int curSample;
   int curBin;
-  double *z = (double*) calloc(numSamples, sizeof(double));
+  float *z = (float*) calloc(numSamples, sizeof(float));
 
   xToZ(x, z, numSamples, splineOrder, numBins, rangeLeft, rangeRight);
 
@@ -495,18 +495,18 @@ void findWeights(const double *x, const double *knots, double *weights, int numS
   free(z);
 }
 
-void hist1d(const double *x, const double *knots, double *hist, double *w, int numSamples, int splineOrder, int numBins) {
+void hist1d(const float *x, const float *knots, float *hist, float *w, int numSamples, int splineOrder, int numBins) {
   int curSample;
   int curBin;
 	
   for (curBin = 0; curBin < numBins; curBin++) {
     for (curSample = 0; curSample < numSamples; curSample++) {
-      hist[curBin] += w[curBin * numSamples + curSample]/(double)numSamples;
+      hist[curBin] += w[curBin * numSamples + curSample]/(float)numSamples;
     }
   }
 }
 
-void hist2d(const double *x, const double *y, const double *knots, const double *wx, const double *wy, double *hist, int numSamples, int splineOrder, int numBins) {
+void hist2d(const float *x, const float *y, const float *knots, const float *wx, const float *wy, float *hist, int numSamples, int splineOrder, int numBins) {
   int curSample;
   int curBinX, curBinY;
 	
@@ -514,25 +514,26 @@ void hist2d(const double *x, const double *y, const double *knots, const double 
     for (curBinY = 0; curBinY < numBins; curBinY++) {
       for (curSample = 0; curSample < numSamples; curSample++) {
     	  hist[curBinX * numBins + curBinY] += wx[curBinX * numSamples + curSample] * wy[curBinY * numSamples + curSample]/numSamples;
-    	  printf("%0.2f cpy hist \n", hist[curBinX * numBins + curBinY]);
+//    	  printf("%0.2f cpy hist \n", hist[curBinX * numBins + curBinY]);
       }
     }
   }
 	
-  /*
-    for (curBinX = 0; curBinX < numBinsX; curBinX++) {
-    for (curBinY = 0; curBinY < numBinsY; curBinY++) {
-    mexPrintf("%f\t", hist[curBinX * numBinsY + curBinY]);
-    }
-    mexPrintf("\n");
-    }
-  */
+
+//    for (curBinX = 0; curBinX < numBins; curBinX++) {
+//    	for (curBinY = 0; curBinY < numBins; curBinY++) {
+//    		printf("%f\t", hist[curBinX * numBins + curBinY]);
+//    	}
+//    	printf("\n");
+//    }
+//    printf("\n");
+
 }
 
-double entropy1d(const double *x, const double *knots, double *weights, int numSamples, int splineOrder, int numBins) {
+float entropy1d(const float *x, const float *knots, float *weights, int numSamples, int splineOrder, int numBins) {
   int curBin;
-  double *hist = (double*) calloc(numBins, sizeof(double));
-  double H = 0;
+  float *hist = (float*) calloc(numBins, sizeof(float));
+  float H = 0;
 	
   hist1d(x, knots, hist, weights, numSamples, splineOrder, numBins);
   for (curBin = 0; curBin < numBins; curBin++) {
@@ -544,11 +545,11 @@ double entropy1d(const double *x, const double *knots, double *weights, int numS
   return H;
 }
 
-double entropy2d(const double *x, const double *y, const double *knots, const double *wx, const double *wy, int numSamples, int splineOrder, int numBins) {
+float entropy2d(const float *x, const float *y, const float *knots, const float *wx, const float *wy, int numSamples, int splineOrder, int numBins) {
   int curBinX, curBinY;
-  double *hist = (double*) calloc(numBins * numBins, sizeof(double));
-  double H = 0;
-  double incr;
+  float *hist = (float*) calloc(numBins * numBins, sizeof(float));
+  float H = 0;
+  float incr;
 
   hist2d(x, y, knots, wx, wy, hist, numSamples, splineOrder, numBins);
   for (curBinX = 0; curBinX < numBins; curBinX++) {
@@ -563,14 +564,14 @@ double entropy2d(const double *x, const double *y, const double *knots, const do
   return H;
 }
 
-double kld2d(const double *xP, const double *yP, const double *xQ, \
-	     const double *yQ, const double *knots, const double *wxP, const double *wyP,\
-	     const double *wxQ, const double *wyQ, int numSamplesP, int numSamplesQ,\
+float kld2d(const float *xP, const float *yP, const float *xQ, \
+	     const float *yQ, const float *knots, const float *wxP, const float *wyP,\
+	     const float *wxQ, const float *wyQ, int numSamplesP, int numSamplesQ,\
 	     int splineOrder, int numBins) {
   int curBinX, curBinY;
-  double *histP = (double*) calloc(numBins * numBins, sizeof(double));
-  double *histQ = (double*) calloc(numBins * numBins, sizeof(double));
-  double KLD = 0;
+  float *histP = (float*) calloc(numBins * numBins, sizeof(float));
+  float *histQ = (float*) calloc(numBins * numBins, sizeof(float));
+  float KLD = 0;
 	
   hist2d(xP, yP, knots, wxP, wyP, histP, numSamplesP, splineOrder, numBins);
   hist2d(xQ, yQ, knots, wxQ, wyQ, histQ, numSamplesQ, splineOrder, numBins);
@@ -588,14 +589,14 @@ double kld2d(const double *xP, const double *yP, const double *xQ, \
 }
 
 /* Compute mutual information for lower triangular matrix from col fromCol to col toCol */
-void miSubMatrix(const double *data, float *miMatrix, int numBins, int numVars, int numSamples, int splineOrder, int fromCol, int toCol) {
+void miSubMatrix(const float *data, float *miMatrix, int numBins, int numVars, int numSamples, int splineOrder, int fromCol, int toCol) {
   int col, row, i;
 	
-  double *knots = (double*) calloc(numBins + splineOrder, sizeof(double));
-  double *entropies = (double*) calloc(numVars - fromCol, sizeof(double));
-  double *weights = (double*)calloc((numVars - fromCol)*numSamples*numBins, sizeof(double));
-  double *hist2 = (double*) calloc(numBins * numBins, sizeof(double));
-  double *hist1 = (double*) calloc(numBins, sizeof(double));
+  float *knots = (float*) calloc(numBins + splineOrder, sizeof(float));
+  float *entropies = (float*) calloc(numVars - fromCol, sizeof(float));
+  float *weights = (float*)calloc((numVars - fromCol)*numSamples*numBins, sizeof(float));
+  float *hist2 = (float*) calloc(numBins * numBins, sizeof(float));
+  float *hist1 = (float*) calloc(numBins, sizeof(float));
 
   knotVector(knots, numBins, splineOrder);
 
@@ -627,15 +628,15 @@ void miSubMatrix(const double *data, float *miMatrix, int numBins, int numVars, 
 /* Compute Kullback-Leibler Divergence for lower triangular matrix from col fromCol to col toCol */
 /* It is the expectation here that indices to be withheld are specified, and used to compute
  * KLD(all samples | all - withheld samples) */
-void kldSubMatrix(const double *dataP, const double *dataQ, float *kldMatrix, int numBins, int numVars, int numSamplesP, int numSamplesQ, int splineOrder, int fromCol, int toCol) {
+void kldSubMatrix(const float *dataP, const float *dataQ, float *kldMatrix, int numBins, int numVars, int numSamplesP, int numSamplesQ, int splineOrder, int fromCol, int toCol) {
   int col, row, i;
 	
-  double *knots = (double*) calloc(numBins + splineOrder, sizeof(double));
-  double *weightsP = (double*)calloc((numVars - fromCol)*numSamplesP*numBins, sizeof(double));
-  double *weightsQ = (double*)calloc((numVars - fromCol)*numSamplesQ*numBins, sizeof(double));
-  double *histP = (double*) calloc(numBins * numBins, sizeof(double));
-  double *histQ = (double*) calloc(numBins * numBins, sizeof(double));
-  double leftP, leftQ, rightP, rightQ, left, right;
+  float *knots = (float*) calloc(numBins + splineOrder, sizeof(float));
+  float *weightsP = (float*)calloc((numVars - fromCol)*numSamplesP*numBins, sizeof(float));
+  float *weightsQ = (float*)calloc((numVars - fromCol)*numSamplesQ*numBins, sizeof(float));
+  float *histP = (float*) calloc(numBins * numBins, sizeof(float));
+  float *histQ = (float*) calloc(numBins * numBins, sizeof(float));
+  float leftP, leftQ, rightP, rightQ, left, right;
   
   knotVector(knots, numBins, splineOrder);
   

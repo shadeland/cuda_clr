@@ -39,7 +39,7 @@ computeGold(float *reference, float *idata, const unsigned int len)
 }
 
 
-void randomI(double *data, int size)
+void randomI(float *data, int size)
 {
     for (int i = 0; i < size; ++i)
         data[i] = rand()%11;
@@ -47,7 +47,7 @@ void randomI(double *data, int size)
 
 }
 
-void printMat(double *X, char *name, int numVars, int numSamples)
+void printMat(float *X, char *name, int numVars, int numSamples)
 {
 	printf("\n\n///////////// %s /////////////\n", name);
 
@@ -77,7 +77,7 @@ void printMatf(float *X, char *name, int numVars, int numSamples)
 	}
 }
 
-void fprintMat(FILE *fp, double *X, char *name, int numVars, int numSamples)
+void fprintMat(FILE *fp, float *X, char *name, int numVars, int numSamples)
 {
 	fprintf(fp, "\n\n///////////// %s /////////////\n", name);
 

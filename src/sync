@@ -1,0 +1,4 @@
+#!/bin/bash
+
+sshpass -p 'mamal65Serent!' scp template.cu InfoKit2.cpp InfoKit2.h template_cpu.cpp  template_cpu.h shahrezaeima@tesla.cs.vcu.edu:/home/shahrezaeima/projects/playground/cuda_clr_remote/src
+
