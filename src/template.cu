@@ -77,14 +77,30 @@ __device__ float distance(float x1, float x2)
 __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
 							  dim3 curBatch, int numBins, int numSamples, int BATCHSIZE, int NUMVARS)
 {
+	/* 
+		each block fits 16 hist2d so blocksize should be 4/4 but it could be calcualted
+		based on the number of bins with this formula; 
+		b = 48000/num_of_bins*num_of_bins*4
+		
+		a = a - a%b 
+
+	*/
+
+	//shared mem for hist2d 
+	extern	__shared__ float s_hist2d[]; 
 
 	const int totalThreads = gridDim.x * blockDim.x; // whic is actually numvars*numvars;
 
 	const int curMiX = blockIdx.x * blockDim.x + threadIdx.x;
 	const int curMiY = blockIdx.y * blockDim.y + threadIdx.y;
+
 	const int globalMiX = BATCHSIZE * curBatch.x + curMiX; //global MI
 	const int globalMiY = BATCHSIZE * curBatch.y + curMiY;
-	if((globalMiY>globalMiX)||(gglobalMiY>=NUMVARS)|| (gglobalMiX>=NUMVARS))
+
+	//clac cur history array
+	float *s_curHist2D = (float*) &s_hist2d[((blockDim.x*threadIdx.x)+threadIdx.y)*numBins*numBins];
+
+	if((globalMiY>globalMiX)||(globalMiY>=NUMVARS)|| (globalMiX>=NUMVARS))
 			return ;		
 //	printf("%d x %d y \n", globalMiX, globalMiY);
 //	printf("%d batch.x %d batch.y \n", curBatch.x, curBatch.y);
@@ -106,8 +122,8 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
 //				printf("%d bx, %d by, %d s, %d mx, %d my, %0.2f wx, %0.2f wy, %0.2f temp \n",curBinX,curBinY,curSample,globalMiX,globalMiY, d_w[curVarXWeightStart + (curBinX * numBins) + curSample] ,
 //				 d_w[curVarYWeightStart + (curBinY * numBins) + curSample], temp);
 			}
-			d_hist2d[curHistStart + (curBinX * numBins) + curBinY] = temp;
-//			printf("%0.2f h2d \n",  d_hist2d[curHistStart + curBinX * numBins + curBinY]);
+			 s_curHist2D[(curBinX * numBins) + curBinY] = temp;
+			// printf("%0.2f h2d \n",  s_curHist2D[(curBinX * numBins) + curBinY]);
 			temp = 0;
 		}
 	}
@@ -119,7 +135,7 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
 	{
 		for (int curBinY = 0; curBinY < numBins; ++curBinY)
 		{
-			incr = (float) d_hist2d[curHistStart + (curBinX * numBins) + curBinY];
+			incr = (float) s_curHist2D[(curBinX * numBins) + curBinY];
 //			printf("%0.2f incr \n",  d_hist2d[curHistStart + (curBinX * numBins) + curBinY]);
 			if (incr > 0)
 			{
@@ -151,7 +167,7 @@ void runBatch(int batchX, int batchY, float *d_w, float *d_out, float *d_hist2d,
 	int startVarY = batchY * BATCHSIZE;
 	int endVarX = startVarX + BATCHSIZE;
 	int endVarY = startVarY + BATCHSIZE;
-
+	int sharedSize = TPBX*TPBX*NUMBINS*NUMBINS*sizeof(float);
 	StopWatchInterface *timer = 0; // This can be shared
 	sdkCreateTimer(&timer);
 
@@ -162,7 +178,7 @@ void runBatch(int batchX, int batchY, float *d_w, float *d_out, float *d_hist2d,
 	if(V>=2)
 		printf("Start Runing batch (%d,%d)  \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize \n\n", batchX, batchY, NUMSAMPLES, numVars, NUMBINS, TPBX, TPBX);
 	sdkStartTimer(&timer);
-	histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out, d_w, d_hist2d, curBatch, NUMBINS, NUMSAMPLES, BATCHSIZE, NUMVARS);
+	histo2dGlobal<<<blocksPerGrid, threadsPerBlock,sharedSize>>>(d_out, d_w, d_hist2d, curBatch, NUMBINS, NUMSAMPLES, BATCHSIZE, NUMVARS);
 	cudaDeviceSynchronize();
 	sdkStopTimer(&timer);
 	if(V>=2)
@@ -188,20 +204,21 @@ void clac_numbins_entropies_wights(float *data, float *entropies, float *w)
 		findWeights(data + (i * NUMSAMPLES), knotsC, w + i * NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS, -1, -1);
 		entropies[i] = entropy1d(data +i*NUMSAMPLES, knotsC, w + i * NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS);
 
-		//RUn on cpy of test
-		// sdkStartTimer(&timer);
-		// for(int j=0; j<NUMVARS; j++){
-		// 	e2d[i*NUMVARS+j] = entropy2d(data + (i*NUMSAMPLES), data + (j*NUMSAMPLES), knotsC, w + i*NUMSAMPLES * NUMBINS, w + j*NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS);
-		// }
-		// sdkStopTimer(&timer);
+		// RUn on cpu for test
+		// TODO use flag
+		sdkStartTimer(&timer);
+		for(int j=0; j<NUMVARS; j++){
+			e2d[i*NUMVARS+j] = entropy2d(data + (i*NUMSAMPLES), data + (j*NUMSAMPLES), knotsC, w + i*NUMSAMPLES * NUMBINS, w + j*NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS);
+		}
+		sdkStopTimer(&timer);
 	}
 	
-	// printf("Processing time CPU : %f(ms)\n", sdkGetTimerValue(&timer));
-	// if(V >= 1){
-	// 	fp = fopen("logcpu","w+");
-	// 	fprintMat(fp,e2d, "ENTROPY 2D", NUMVARS, NUMVARS);
-	// 	fclose(fp);
-	// }
+	printf("Processing time CPU : %f(ms)\n", sdkGetTimerValue(&timer));
+	if(V >= 1){
+		fp = fopen("logcpu","w+");
+		fprintMat(fp,e2d, "ENTROPY 2D", NUMVARS, NUMVARS);
+		fclose(fp);
+	}
 }
 
 
