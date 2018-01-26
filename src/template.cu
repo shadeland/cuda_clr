@@ -51,7 +51,7 @@
 int NUMSAMPLES;
 int NUMVARS;
 int NUMMI;
-int NUMBINS;
+int NUMBINS = -1;
 int BATCHSIZE;
 int TPBX;
 int TOTAL;
@@ -84,10 +84,10 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
 	const int curMiY = blockIdx.y * blockDim.y + threadIdx.y;
 	const int globalMiX = BATCHSIZE * curBatch.x + curMiX; //global MI
 	const int globalMiY = BATCHSIZE * curBatch.y + curMiY;
-	if((globalMiY>globalMiX)||(gglobalMiY>=NUMVARS)|| (gglobalMiX>=NUMVARS))
-			return ;		
-//	printf("%d x %d y \n", globalMiX, globalMiY);
-//	printf("%d batch.x %d batch.y \n", curBatch.x, curBatch.y);
+	if ((globalMiY > globalMiX) || (globalMiY >= NUMVARS) || (globalMiX >= NUMVARS))
+		return;
+	//	printf("%d x %d y \n", globalMiX, globalMiY);
+	//	printf("%d batch.x %d batch.y \n", curBatch.x, curBatch.y);
 	int histSize = numBins * numBins;
 
 	float temp = 0;
@@ -103,11 +103,11 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
 			for (int curSample = 0; curSample < numSamples; ++curSample)
 			{
 				temp += (d_w[curVarXWeightStart + (curBinX * numSamples) + curSample] * d_w[curVarYWeightStart + (curBinY * numSamples) + curSample]) / numSamples;
-//				printf("%d bx, %d by, %d s, %d mx, %d my, %0.2f wx, %0.2f wy, %0.2f temp \n",curBinX,curBinY,curSample,globalMiX,globalMiY, d_w[curVarXWeightStart + (curBinX * numBins) + curSample] ,
-//				 d_w[curVarYWeightStart + (curBinY * numBins) + curSample], temp);
+				//				printf("%d bx, %d by, %d s, %d mx, %d my, %0.2f wx, %0.2f wy, %0.2f temp \n",curBinX,curBinY,curSample,globalMiX,globalMiY, d_w[curVarXWeightStart + (curBinX * numBins) + curSample] ,
+				//				 d_w[curVarYWeightStart + (curBinY * numBins) + curSample], temp);
 			}
 			d_hist2d[curHistStart + (curBinX * numBins) + curBinY] = temp;
-//			printf("%0.2f h2d \n",  d_hist2d[curHistStart + curBinX * numBins + curBinY]);
+			//			printf("%0.2f h2d \n",  d_hist2d[curHistStart + curBinX * numBins + curBinY]);
 			temp = 0;
 		}
 	}
@@ -119,8 +119,8 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
 	{
 		for (int curBinY = 0; curBinY < numBins; ++curBinY)
 		{
-			incr = (float) d_hist2d[curHistStart + (curBinX * numBins) + curBinY];
-//			printf("%0.2f incr \n",  d_hist2d[curHistStart + (curBinX * numBins) + curBinY]);
+			incr = (float)d_hist2d[curHistStart + (curBinX * numBins) + curBinY];
+			//			printf("%0.2f incr \n",  d_hist2d[curHistStart + (curBinX * numBins) + curBinY]);
 			if (incr > 0)
 			{
 				H2D -= incr * log2(incr); //calc entropy of current MI
@@ -129,8 +129,8 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
 	}
 
 	// __syncthreads();
-	d_out[(NUMVARS * globalMiX) + globalMiY] =  H2D;
-//	printf("%d OUT %0.2f H2D",NUMVARS * globalMiX + globalMiY, H2D);
+	d_out[(NUMVARS * globalMiX) + globalMiY] = H2D;
+	//	printf("%d OUT %0.2f H2D",NUMVARS * globalMiX + globalMiY, H2D);
 }
 
 //////////// for benchmarking with CPU use template source
@@ -138,7 +138,7 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
 // Program main
 ////////////////////////////////////////////////////////////////////////////////
 
-void genWeights(float *w, int numSamples, int numVars, int numBins)
+void getRandomData(float *w, int numSamples, int numVars, int numBins)
 {
 
 	randomI(w, numSamples * numVars * numBins);
@@ -159,16 +159,40 @@ void runBatch(int batchX, int batchY, float *d_w, float *d_out, float *d_hist2d,
 
 	dim3 threadsPerBlock(TPBX, TPBX);
 	dim3 blocksPerGrid((BATCHSIZE + TPBX - 1) / TPBX, (BATCHSIZE + TPBX - 1) / TPBX);
-	if(V>=2)
+	if (V >= 2)
 		printf("Start Runing batch (%d,%d)  \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize \n\n", batchX, batchY, NUMSAMPLES, numVars, NUMBINS, TPBX, TPBX);
 	sdkStartTimer(&timer);
 	histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out, d_w, d_hist2d, curBatch, NUMBINS, NUMSAMPLES, BATCHSIZE, NUMVARS);
 	cudaDeviceSynchronize();
 	sdkStopTimer(&timer);
-	if(V>=2)
+	if (V >= 2)
 		printf("Processing time GPU for batch: %f (ms)\n", sdkGetTimerValue(&timer));
 }
 
+
+
+void _clacNumBinsint(float *data, int numVars, int numSamples, float binMultiplier)
+{
+	if (NUMBINS != -1)
+	{
+		return ;
+	}
+	int *binCount;
+	binCount = calcNumBins(data, numVars, numSamples, binMultiplier);
+	if (NUMBINS == -1)
+	{
+		NUMBINS = (int)floor(mediani(binCount, numVars));
+		float stdBinCount = stdi(binCount, numVars);
+		printf("Bin count not supplied. Autodetected that dataset warrants %d bins (median); stddev == %f\n", NUMBINS, stdBinCount);
+		if (NUMBINS > 15)
+			fprintf(stdout, "Warning: this automatic bin count (%d) may be a bit slow on large datasets, and may warrant a spline degree above 3\n", NUMBINS);
+		if (NUMBINS < 2)
+		{
+			fprintf(stderr, "Too few bins (%d)!\n", NUMBINS);
+			exit(-1);
+		}
+	}
+}
 
 void clac_numbins_entropies_wights(float *data, float *entropies, float *w)
 {
@@ -177,7 +201,7 @@ void clac_numbins_entropies_wights(float *data, float *entropies, float *w)
 
 	float *knots = (float *)calloc(NUMBINS + SPLINEORDER, sizeof(float));
 	const float *hist1 = (float *)calloc(NUMBINS, sizeof(float));
-	float *e2d = (float *)calloc(NUMVARS *NUMVARS, sizeof(float));
+	float *e2d = (float *)calloc(NUMVARS * NUMVARS, sizeof(float));
 	////CALC KNOTS
 	knotVector(knots, NUMBINS, SPLINEORDER);
 
@@ -186,26 +210,23 @@ void clac_numbins_entropies_wights(float *data, float *entropies, float *w)
 	for (int i = 0; i < NUMVARS; i++)
 	{
 		findWeights(data + (i * NUMSAMPLES), knotsC, w + i * NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS, -1, -1);
-		entropies[i] = entropy1d(data +i*NUMSAMPLES, knotsC, w + i * NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS);
+		entropies[i] = entropy1d(data + i * NUMSAMPLES, knotsC, w + i * NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS);
 
 		//RUn on cpy of test
-		// sdkStartTimer(&timer);
-		// for(int j=0; j<NUMVARS; j++){
-		// 	e2d[i*NUMVARS+j] = entropy2d(data + (i*NUMSAMPLES), data + (j*NUMSAMPLES), knotsC, w + i*NUMSAMPLES * NUMBINS, w + j*NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS);
-		// }
-		// sdkStopTimer(&timer);
+		sdkStartTimer(&timer);
+		for(int j=0; j<NUMVARS; j++){
+			e2d[i*NUMVARS+j] = entropy2d(data + (i*NUMSAMPLES), data + (j*NUMSAMPLES), knotsC, w + i*NUMSAMPLES * NUMBINS, w + j*NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS);
+		}
+		sdkStopTimer(&timer);
 	}
-	
-	// printf("Processing time CPU : %f(ms)\n", sdkGetTimerValue(&timer));
-	// if(V >= 1){
-	// 	fp = fopen("logcpu","w+");
-	// 	fprintMat(fp,e2d, "ENTROPY 2D", NUMVARS, NUMVARS);
-	// 	fclose(fp);
-	// }
+
+	printf("Processing time CPU : %f(ms)\n", sdkGetTimerValue(&timer));
+	if(V >= 1){
+		fp = fopen("logcpu","w+");
+		fprintMat(fp,e2d, "ENTROPY 2D", NUMVARS, NUMVARS);
+		fclose(fp);
+	}
 }
-
-
-
 
 int main(int argc, char **argv)
 {
@@ -218,11 +239,11 @@ int main(int argc, char **argv)
 	NUMVARS = atoi(argv[2]);	// powers of two for now
 	NUMMI = NUMVARS * NUMVARS;
 	NUMBINS = atoi(argv[3]);
+
 	BATCHSIZE = atoi(argv[4]); //128*128 batch size for hist mem management
 	TPBX = atoi(argv[5]);	  //threads per block dim 16*16
 	V = atoi(argv[6]);
 	SPLINEORDER = 3;
-	TOTAL = NUMSAMPLES * NUMVARS * NUMBINS;
 	
 
 	// if (V >= 1)
@@ -242,19 +263,32 @@ int main(int argc, char **argv)
 	StopWatchInterface *timer = 0;
 	sdkCreateTimer(&timer);
 
+	h_data = (float *)calloc(NUMVARS * NUMSAMPLES, sizeof(float));
+	h_out = (float *)calloc(NUMMI, sizeof(float));
+	h_entrop1d = (float *)calloc(NUMVARS, sizeof(float));
+
+	getRandomData(h_data, NUMSAMPLES, NUMVARS, 1);// generate random data
+
+	// calc num bins 
+	_clacNumBinsint(h_data, NUMVARS, NUMSAMPLES,1);
+
+	TOTAL = NUMSAMPLES * NUMVARS * NUMBINS;
+	h_w = (float *)calloc(TOTAL, sizeof(float)); // host mem for weights /// why float ? ???
+
+	
 	// Allocate device memory to store the output array with size number  samples
 	// 1d for now
 	cudaMalloc(&d_out, NUMMI * sizeof(float));
+	cudaMemset(d_out,0 ,NUMMI * sizeof(float));
 	cudaMalloc(&d_w, TOTAL * sizeof(float));
 	cudaMalloc(&d_hist2d, NUMBINS * NUMBINS * BATCHSIZE * BATCHSIZE * sizeof(float));
 
-	h_out = (float *)calloc(NUMMI, sizeof(float));
-	h_w = (float *)calloc(TOTAL, sizeof(float)); // host mem for weights /// why float ? ???
-	h_data = (float *)calloc(NUMVARS * NUMSAMPLES, sizeof(float));
-	h_entrop1d = (float *)calloc(NUMVARS, sizeof(float));
+	
+	
+	
 
 	// gen random data
-	genWeights(h_data, NUMSAMPLES, NUMVARS, 1);
+	
 
 	if (V >= 3)
 		fprintMat(fp, h_data, "DATA MAT", NUMVARS, NUMSAMPLES);
@@ -287,8 +321,9 @@ int main(int argc, char **argv)
 	sdkStopTimer(&timer);
 	cudaMemcpy(h_out, d_out, NUMMI * sizeof(float), cudaMemcpyDeviceToHost);
 
-	if (V >= 1){
-		fp = fopen("loggpu","w+");
+	if (V >= 1)
+	{
+		fp = fopen("loggpu", "w+");
 		fprintMat(fp, h_out, "ENTROPY2 MAT", NUMVARS, NUMVARS);
 		fclose(fp);
 	}
@@ -301,7 +336,6 @@ int main(int argc, char **argv)
 	printf("Finished Runing  \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize , %d batches \n\n",
 		   NUMSAMPLES, NUMVARS, NUMBINS, TPBX, TPBX, BATCHSIZE);
 	printf("Processing Total Time GPU: %f (ms)\n", sdkGetTimerValue(&timer));
-
 
 	// cudaMemcpy(h_out, d_out, NUMMI*sizeof(float), cudaMemcpyDeviceToHost);
 
