@@ -129,6 +129,8 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d, float *
 	}
 	float H1X = d_entropies1d[globalMiX];
 	float H1Y = d_entropies1d[globalMiY];
+	// printf("%0.2f, %0.2f \n",  H1X , H1Y);
+
 	float MI = H1X+H1Y-H2D;
 
 
@@ -226,23 +228,23 @@ void clac_numbins_entropies_wights(float *data, float *entropies, float *w)
 	}
 
 	//calc mi on cpu
-	sdkStartTimer(&timer);
-	miSubMatrix(data, miMat, NUMBINS, NUMVARS, NUMSAMPLES, SPLINEORDER, 0,NUMVARS);
-	sdkStopTimer(&timer);
-
-	printf("Processing time CPU : %f(ms)\n", sdkGetTimerValue(&timer));
-	if(V >= 1){
-		fp = fopen("logcpu","w+");
-		fprintMat(fp,e2d, "MI CPU", NUMVARS, NUMVARS);
-		fclose(fp);
-	}
+	// sdkStartTimer(&timer);
+	// miSubMatrix(data, miMat, NUMBINS, NUMVARS, NUMSAMPLES, SPLINEORDER, 0,NUMVARS);
+	// sdkStopTimer(&timer);
+	// miMat = transpose(miMat, NUMVARS,NUMVARS);
+	// printf("Processing time CPU : %f(ms)\n", sdkGetTimerValue(&timer));
+	// if(V >= 1){
+	// 	fp = fopen("logcpu","w+");
+	// 	fprintMat(fp,miMat, "MI CPU", NUMVARS, NUMVARS);
+	// 	fclose(fp);
+	// }
 }
 
 int main(int argc, char **argv)
 {
 	if (argc < 2)
 	{
-		printf("usage: template <numSamples> <numVars> <numBins> <batchSize> <threadperblock> <VEROBOSE=0||1>");
+		printf("usage: template <numSamples> <numVars> <numBins=-1> <batchSize> <threadperblock> <VEROBOSE=0||1>");
 		return 1;
 	}
 	NUMSAMPLES = atoi(argv[1]); //
@@ -268,6 +270,7 @@ int main(int argc, char **argv)
 	float *d_entropies1d = 0;
 	float *h_data = 0;
 	float *d_hist2d = 0;
+	float *h_clrMat = 0
 
 	// setup a time to calc the time
 	StopWatchInterface *timer = 0;
@@ -276,6 +279,7 @@ int main(int argc, char **argv)
 	h_data = (float *)calloc(NUMVARS * NUMSAMPLES, sizeof(float));
 	h_out = (float *)calloc(NUMMI, sizeof(float));
 	h_entrop1d = (float *)calloc(NUMVARS, sizeof(float));
+	h_clrMat =  (float *)calloc(NUMVARS, NUMVARS, sizeof(float));
 
 	getRandomData(h_data, NUMSAMPLES, NUMVARS, 1);// generate random data
 
@@ -315,7 +319,7 @@ int main(int argc, char **argv)
 	//copy w to dev
 	// copy result entropy to gpu
 	cudaMemcpy(d_w, h_w, TOTAL * sizeof(float), cudaMemcpyHostToDevice);
-	cudaMemcpy(h_entrop1d, d_entropies1d, NUMVARS * sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_entropies1d, h_entrop1d, NUMVARS * sizeof(float), cudaMemcpyHostToDevice);
 
 	
 	// runing batches
@@ -332,6 +336,8 @@ int main(int argc, char **argv)
 	}
 	sdkStopTimer(&timer);
 	cudaMemcpy(h_out, d_out, NUMMI * sizeof(float), cudaMemcpyDeviceToHost);
+
+
 
 	if (V >= 1)
 	{

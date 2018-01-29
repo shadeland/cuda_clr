@@ -33,6 +33,15 @@ float simpson(float a, float b, int m, float (*f) (float, float*), float *params
 	return J;
 }
 
+float *transpose(float *in, int numRows, int numCols){
+    float *temp = (float *) malloc(numRows*numCols*sizeof(float)); 
+    for(int row=0; row<numRows; ++row)
+      for (int col=0; col<numCols; ++col)
+        temp[col*numRows+row] = in[row*numCols+col];
+      
+    return temp;
+}
+
 float fdr(const float *p, int numElem, float alpha, int dependence) {
   float *tmp = (float*)calloc(numElem, sizeof(float));
   float val;

@@ -37,6 +37,7 @@ int mini(const int*, int);
 void xToZ(const float*, float*, int, int, int, float, float);
 void miSubMatrix(const float*, float*, int, int, int, int, int, int);
 float mediani(int *, int);
+float *transpose(float *in, int numRows, int numCols);
 float mean(float*, int);
 float stdv(float*,int);
 float meani(int*, int);
