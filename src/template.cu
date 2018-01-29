@@ -74,7 +74,7 @@ __device__ float distance(float x1, float x2)
 }
 
 //this just uses 1dim blocks
-__global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
+__global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d, float *d_entropies1d,
 							  dim3 curBatch, int numBins, int numSamples, int BATCHSIZE, int NUMVARS)
 {
 
@@ -127,9 +127,13 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d,
 			}
 		}
 	}
+	float H1X = d_entropies1d[globalMiX];
+	float H1Y = d_entropies1d[globalMiY];
+	float MI = H1X+H1Y-H2D;
+
 
 	// __syncthreads();
-	d_out[(NUMVARS * globalMiX) + globalMiY] = H2D;
+	d_out[(NUMVARS * globalMiX) + globalMiY] = MI;
 	//	printf("%d OUT %0.2f H2D",NUMVARS * globalMiX + globalMiY, H2D);
 }
 
@@ -145,7 +149,7 @@ void getRandomData(float *w, int numSamples, int numVars, int numBins)
 }
 
 // TO RUN EACH BATCH
-void runBatch(int batchX, int batchY, float *d_w, float *d_out, float *d_hist2d, int numVars)
+void runBatch(int batchX, int batchY, float *d_w, float *d_out, float *d_entropies1d, float *d_hist2d, int numVars)
 {
 	int startVarX = batchX * BATCHSIZE; //for memory indexing
 	int startVarY = batchY * BATCHSIZE;
@@ -162,7 +166,7 @@ void runBatch(int batchX, int batchY, float *d_w, float *d_out, float *d_hist2d,
 	if (V >= 2)
 		printf("Start Runing batch (%d,%d)  \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize \n\n", batchX, batchY, NUMSAMPLES, numVars, NUMBINS, TPBX, TPBX);
 	sdkStartTimer(&timer);
-	histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out, d_w, d_hist2d, curBatch, NUMBINS, NUMSAMPLES, BATCHSIZE, NUMVARS);
+	histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out, d_w, d_hist2d, d_entropies1d, curBatch, NUMBINS, NUMSAMPLES, BATCHSIZE, NUMVARS);
 	cudaDeviceSynchronize();
 	sdkStopTimer(&timer);
 	if (V >= 2)
@@ -202,6 +206,7 @@ void clac_numbins_entropies_wights(float *data, float *entropies, float *w)
 	float *knots = (float *)calloc(NUMBINS + SPLINEORDER, sizeof(float));
 	const float *hist1 = (float *)calloc(NUMBINS, sizeof(float));
 	float *e2d = (float *)calloc(NUMVARS * NUMVARS, sizeof(float));
+	float *miMat = (float *)calloc(NUMVARS * NUMVARS, sizeof(float));
 	////CALC KNOTS
 	knotVector(knots, NUMBINS, SPLINEORDER);
 
@@ -213,17 +218,22 @@ void clac_numbins_entropies_wights(float *data, float *entropies, float *w)
 		entropies[i] = entropy1d(data + i * NUMSAMPLES, knotsC, w + i * NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS);
 
 		//RUn on cpy of test
-		sdkStartTimer(&timer);
-		for(int j=0; j<NUMVARS; j++){
-			e2d[i*NUMVARS+j] = entropy2d(data + (i*NUMSAMPLES), data + (j*NUMSAMPLES), knotsC, w + i*NUMSAMPLES * NUMBINS, w + j*NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS);
-		}
-		sdkStopTimer(&timer);
+		// sdkStartTimer(&timer);
+		// for(int j=0; j<NUMVARS; j++){
+		// 	e2d[i*NUMVARS+j] = entropy2d(data + (i*NUMSAMPLES), data + (j*NUMSAMPLES), knotsC, w + i*NUMSAMPLES * NUMBINS, w + j*NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS);
+		// }
+		// sdkStopTimer(&timer);
 	}
+
+	//calc mi on cpu
+	sdkStartTimer(&timer);
+	miSubMatrix(data, miMat, NUMBINS, NUMVARS, NUMSAMPLES, SPLINEORDER, 0,NUMVARS);
+	sdkStopTimer(&timer);
 
 	printf("Processing time CPU : %f(ms)\n", sdkGetTimerValue(&timer));
 	if(V >= 1){
 		fp = fopen("logcpu","w+");
-		fprintMat(fp,e2d, "ENTROPY 2D", NUMVARS, NUMVARS);
+		fprintMat(fp,e2d, "MI CPU", NUMVARS, NUMVARS);
 		fclose(fp);
 	}
 }
@@ -255,7 +265,7 @@ int main(int argc, char **argv)
 	float *h_w = 0;
 	float *d_w = 0;
 	float *h_entrop1d = 0;
-	float *d_entrop1d = 0;
+	float *d_entropies1d = 0;
 	float *h_data = 0;
 	float *d_hist2d = 0;
 
@@ -280,6 +290,7 @@ int main(int argc, char **argv)
 	// 1d for now
 	cudaMalloc(&d_out, NUMMI * sizeof(float));
 	cudaMemset(d_out,0 ,NUMMI * sizeof(float));
+	cudaMalloc(&d_entropies1d, NUMVARS * sizeof(float));
 	cudaMalloc(&d_w, TOTAL * sizeof(float));
 	cudaMalloc(&d_hist2d, NUMBINS * NUMBINS * BATCHSIZE * BATCHSIZE * sizeof(float));
 
@@ -302,10 +313,11 @@ int main(int argc, char **argv)
 		fprintMat(fp, h_w, "WEIGHT MAT", NUMVARS, NUMSAMPLES * NUMBINS);
 
 	//copy w to dev
+	// copy result entropy to gpu
 	cudaMemcpy(d_w, h_w, TOTAL * sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(h_entrop1d, d_entropies1d, NUMVARS * sizeof(float), cudaMemcpyHostToDevice);
 
-	//config kernel
-
+	
 	// runing batches
 
 	int numBatches = (NUMVARS + BATCHSIZE - 1) / BATCHSIZE;
@@ -315,7 +327,7 @@ int main(int argc, char **argv)
 
 		for (int curBatchY = 0; curBatchY < numBatches; ++curBatchY)
 		{
-			runBatch(curBatchX, curBatchY, d_w, d_out, d_hist2d, BATCHSIZE);
+			runBatch(curBatchX, curBatchY, d_w, d_out, d_entropies1d, d_hist2d, BATCHSIZE);
 		}
 	}
 	sdkStopTimer(&timer);
