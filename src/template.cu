@@ -56,18 +56,18 @@ FILE *fp;
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-__device__ float scale(int i, int n)
+__device__ double scale(int i, int n)
 {
-	return ((float)i) / (n - 1);
+	return ((double)i) / (n - 1);
 }
 
-__device__ float distance(float x1, float x2)
+__device__ double distance(double x1, double x2)
 {
 	return sqrt((x2 - x1) * (x2 - x1));
 }
 
 //this just uses 1dim blocks
-__global__ void histo2dGlobal(float *d_out, double *d_w, float *d_hist2d,
+__global__ void histo2dGlobal(double *d_out, double *d_w, double *d_hist2d,
 							  dim3 curBatch, int numBins, int numSamples, int BATCHSIZE, int NUMVARS)
 {
 
@@ -77,15 +77,17 @@ __global__ void histo2dGlobal(float *d_out, double *d_w, float *d_hist2d,
 	const int curMiY = blockIdx.y * blockDim.y + threadIdx.y;
 	const int globalMiX = BATCHSIZE * curBatch.x + curMiX; //global MI
 	const int globalMiY = BATCHSIZE * curBatch.y + curMiY;
-	printf("%d x %d y \n", globalMiX, globalMiY);
-	printf("%d batch.x %d batch.y \n", curBatch.x, curBatch.y);
+	if(globalMiY>globalMiX)
+			return ;
+//	printf("%d x %d y \n", globalMiX, globalMiY);
+//	printf("%d batch.x %d batch.y \n", curBatch.x, curBatch.y);
 	int histSize = numBins * numBins;
 
 	double temp = 0;
 	int curVarXWeightStart = globalMiX * numSamples * numBins;
 	int curVarYWeightStart = globalMiY * numSamples * numBins;
 
-	int curHistStart = (BATCHSIZE * curMiY + curMiX) * numBins * numBins;
+	int curHistStart = ((BATCHSIZE * curMiX) + curMiY) * (numBins * numBins);
 
 	for (int curBinX = 0; curBinX < numBins; ++curBinX)
 	{
@@ -93,12 +95,12 @@ __global__ void histo2dGlobal(float *d_out, double *d_w, float *d_hist2d,
 		{
 			for (int curSample = 0; curSample < numSamples; ++curSample)
 			{
-				temp += (d_w[curVarXWeightStart + (curBinX * numBins) + curSample] * d_w[curVarYWeightStart + (curBinY * numBins) + curSample]) / numSamples;
-				printf("%d bx, %d by, %d s, %d mx, %d my, %0.2f wx, %0.2f wy, %0.2f temp \n",curBinX,curBinY,curSample,globalMiX,globalMiY, d_w[curVarXWeightStart + (curBinX * numBins) + curSample] ,
-				 d_w[curVarYWeightStart + (curBinY * numBins) + curSample], temp);
+				temp += (d_w[curVarXWeightStart + (curBinX * numSamples) + curSample] * d_w[curVarYWeightStart + (curBinY * numSamples) + curSample]) / numSamples;
+//				printf("%d bx, %d by, %d s, %d mx, %d my, %0.2f wx, %0.2f wy, %0.2f temp \n",curBinX,curBinY,curSample,globalMiX,globalMiY, d_w[curVarXWeightStart + (curBinX * numBins) + curSample] ,
+//				 d_w[curVarYWeightStart + (curBinY * numBins) + curSample], temp);
 			}
 			d_hist2d[curHistStart + (curBinX * numBins) + curBinY] = temp;
-			printf("%0.2f h2d \n",  d_hist2d[curHistStart + curBinX * numBins + curBinY]);
+//			printf("%0.2f h2d \n",  d_hist2d[curHistStart + curBinX * numBins + curBinY]);
 			temp = 0;
 		}
 	}
@@ -111,7 +113,7 @@ __global__ void histo2dGlobal(float *d_out, double *d_w, float *d_hist2d,
 		for (int curBinY = 0; curBinY < numBins; ++curBinY)
 		{
 			incr = (double) d_hist2d[curHistStart + (curBinX * numBins) + curBinY];
-			printf("%0.2f incr \n",  d_hist2d[curHistStart + (curBinX * numBins) + curBinY]);
+//			printf("%0.2f incr \n",  d_hist2d[curHistStart + (curBinX * numBins) + curBinY]);
 			if (incr > 0)
 			{
 				H2D -= incr * log2(incr); //calc entropy of current MI
@@ -120,8 +122,8 @@ __global__ void histo2dGlobal(float *d_out, double *d_w, float *d_hist2d,
 	}
 
 	// __syncthreads();
-	d_out[(NUMVARS * globalMiX) + globalMiY] = (float) H2D;
-	printf("%d OUT %0.2f H2D",NUMVARS * globalMiX + globalMiY, H2D);
+	d_out[(NUMVARS * globalMiX) + globalMiY] =  H2D;
+//	printf("%d OUT %0.2f H2D",NUMVARS * globalMiX + globalMiY, H2D);
 }
 
 //////////// for benchmarking with CPU use template source
@@ -136,7 +138,7 @@ void genWeights(double *w, int numSamples, int numVars, int numBins)
 }
 
 // TO RUN EACH BATCH
-void runBatch(int batchX, int batchY, double *d_w, float *d_out, float *d_hist2d, int numVars)
+void runBatch(int batchX, int batchY, double *d_w, double *d_out, double *d_hist2d, int numVars)
 {
 	int startVarX = batchX * BATCHSIZE; //for memory indexing
 	int startVarY = batchY * BATCHSIZE;
@@ -150,18 +152,21 @@ void runBatch(int batchX, int batchY, double *d_w, float *d_out, float *d_hist2d
 
 	dim3 threadsPerBlock(TPBX, TPBX);
 	dim3 blocksPerGrid((BATCHSIZE + TPBX - 1) / TPBX, (BATCHSIZE + TPBX - 1) / TPBX);
-
-	printf("Start Runing batch (%d,%d)  \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize \n\n", batchX, batchY, NUMSAMPLES, numVars, NUMBINS, TPBX, TPBX);
+	if(V>=2)
+		printf("Start Runing batch (%d,%d)  \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize \n\n", batchX, batchY, NUMSAMPLES, numVars, NUMBINS, TPBX, TPBX);
 	sdkStartTimer(&timer);
 	histo2dGlobal<<<blocksPerGrid, threadsPerBlock>>>(d_out, d_w, d_hist2d, curBatch, NUMBINS, NUMSAMPLES, BATCHSIZE, NUMVARS);
 	cudaDeviceSynchronize();
 	sdkStopTimer(&timer);
-	printf("Processing time GPU for batch: %f (ms)\n", sdkGetTimerValue(&timer));
+	if(V>=2)
+		printf("Processing time GPU for batch: %f (ms)\n", sdkGetTimerValue(&timer));
 }
 
 
-void clac_numbins_entropies_wights(double *data, float *entropies, double *w)
+void clac_numbins_entropies_wights(double *data, double *entropies, double *w)
 {
+	StopWatchInterface *timer = 0; // This can be shared
+	sdkCreateTimer(&timer);
 
 	double *knots = (double *)calloc(NUMBINS + SPLINEORDER, sizeof(double));
 	const double *hist1 = (double *)calloc(NUMBINS, sizeof(double));
@@ -176,11 +181,16 @@ void clac_numbins_entropies_wights(double *data, float *entropies, double *w)
 		findWeights(data + (i * NUMSAMPLES), knotsC, w + i * NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS, -1, -1);
 		entropies[i] = entropy1d(data +i*NUMSAMPLES, knotsC, w + i * NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS);
 
-		for(int j=0; j<NUMVARS; j++){
-			e2d[i*NUMVARS+j] = entropy2d(data + (i*NUMSAMPLES), data + (j*NUMSAMPLES), knotsC, w + i*NUMSAMPLES * NUMBINS, w + j*NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS);
-		}
+//		sdkStartTimer(&timer);
+//		for(int j=0; j<NUMVARS; j++){
+//			e2d[i*NUMVARS+j] = entropy2d(data + (i*NUMSAMPLES), data + (j*NUMSAMPLES), knotsC, w + i*NUMSAMPLES * NUMBINS, w + j*NUMSAMPLES * NUMBINS, NUMSAMPLES, SPLINEORDER, NUMBINS);
+//		}
+//		sdkStopTimer(&timer);
 	}
-	fprintMat(fp,e2d, "ENTROPY 2D", NUMVARS, NUMVARS);
+	printf("Processing time CPU : %f(ms)\n", sdkGetTimerValue(&timer));
+
+	if(V >= 1)
+		fprintMat(fp,e2d, "ENTROPY 2D", NUMVARS, NUMVARS);
 }
 
 
@@ -204,18 +214,18 @@ int main(int argc, char **argv)
 	TOTAL = NUMSAMPLES * NUMVARS * NUMBINS;
 	
 
-	if (V == 1)
+	if (V >= 1)
 		fp = fopen("log", "w+");
 
 	// Declare a pointer for an array of floats
-	float *h_out = 0;
-	float *d_out = 0;
+	double *h_out = 0;
+	double *d_out = 0;
 	double *h_w = 0;
 	double *d_w = 0;
-	float *h_entrop1d = 0;
-	float *d_entrop1d = 0;
+	double *h_entrop1d = 0;
+	double *d_entrop1d = 0;
 	double *h_data = 0;
-	float *d_hist2d = 0;
+	double *d_hist2d = 0;
 
 	// setup a time to calc the time
 	StopWatchInterface *timer = 0;
@@ -223,27 +233,27 @@ int main(int argc, char **argv)
 
 	// Allocate device memory to store the output array with size number  samples
 	// 1d for now
-	cudaMalloc(&d_out, NUMMI * sizeof(float));
+	cudaMalloc(&d_out, NUMMI * sizeof(double));
 	cudaMalloc(&d_w, TOTAL * sizeof(double));
-	cudaMalloc(&d_hist2d, NUMBINS * NUMBINS * BATCHSIZE * BATCHSIZE * sizeof(float));
+	cudaMalloc(&d_hist2d, NUMBINS * NUMBINS * BATCHSIZE * BATCHSIZE * sizeof(double));
 
-	h_out = (float *)calloc(NUMMI, sizeof(float));
+	h_out = (double *)calloc(NUMMI, sizeof(double));
 	h_w = (double *)calloc(TOTAL, sizeof(double)); // host mem for weights /// why double ? ???
 	h_data = (double *)calloc(NUMVARS * NUMSAMPLES, sizeof(double));
-	h_entrop1d = (float *)calloc(NUMVARS, sizeof(float));
+	h_entrop1d = (double *)calloc(NUMVARS, sizeof(double));
 
 	// gen random data
 	genWeights(h_data, NUMSAMPLES, NUMVARS, 1);
 
-	if (V == 1)
+	if (V == 2)
 		fprintMat(fp, h_data, "DATA MAT", NUMVARS, NUMSAMPLES);
 
 	clac_numbins_entropies_wights(h_data, h_entrop1d, h_w);
 
-	if (V == 1)
-		fprintMatf(fp, h_entrop1d, "ENTROPY1 MAT", NUMVARS, 1);
+	if (V == 2)
+		fprintMat(fp, h_entrop1d, "ENTROPY1 MAT", NUMVARS, 1);
 
-	if (V == 1)
+	if (V == 2)
 		fprintMat(fp, h_w, "WEIGHT MAT", NUMVARS, NUMSAMPLES * NUMBINS);
 
 	//copy w to dev
@@ -258,15 +268,15 @@ int main(int argc, char **argv)
 	for (int curBatchX = 0; curBatchX < numBatches; ++curBatchX)
 	{
 
-		for (int curBatchY = 0; curBatchY < numBatches; ++curBatchY)
+		for (int curBatchY = curBatchX; curBatchY < numBatches; ++curBatchY)
 		{
 			runBatch(curBatchX, curBatchY, d_w, d_out, d_hist2d, BATCHSIZE);
 		}
 	}
 	sdkStopTimer(&timer);
-	cudaMemcpy(h_out, d_out, NUMMI * sizeof(float), cudaMemcpyDeviceToHost);
-	if (V == 1)
-		fprintMatf(fp, h_out, "ENTROPY2 MAT", NUMVARS, NUMVARS);
+	cudaMemcpy(h_out, d_out, NUMMI * sizeof(double), cudaMemcpyDeviceToHost);
+	if (V >= 1)
+		fprintMat(fp, h_out, "ENTROPY2 MAT", NUMVARS, NUMVARS);
 
 	// Launch kernel to compute and store distance values
 	// printf("Start Runing \n %d Samples \n %d vars \n %d bins \n %dX%d blocksize \n\n",NUMSAMPLES , NUMVARS , NUMBINS , TPBX,TPBX);

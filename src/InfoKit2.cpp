@@ -514,19 +514,20 @@ void hist2d(const double *x, const double *y, const double *knots, const double 
     for (curBinY = 0; curBinY < numBins; curBinY++) {
       for (curSample = 0; curSample < numSamples; curSample++) {
     	  hist[curBinX * numBins + curBinY] += wx[curBinX * numSamples + curSample] * wy[curBinY * numSamples + curSample]/numSamples;
-    	  printf("%0.2f cpy hist \n", hist[curBinX * numBins + curBinY]);
+//    	  printf("%0.2f cpy hist \n", hist[curBinX * numBins + curBinY]);
       }
     }
   }
 	
-  /*
-    for (curBinX = 0; curBinX < numBinsX; curBinX++) {
-    for (curBinY = 0; curBinY < numBinsY; curBinY++) {
-    mexPrintf("%f\t", hist[curBinX * numBinsY + curBinY]);
-    }
-    mexPrintf("\n");
-    }
-  */
+
+//    for (curBinX = 0; curBinX < numBins; curBinX++) {
+//    	for (curBinY = 0; curBinY < numBins; curBinY++) {
+//    		printf("%f\t", hist[curBinX * numBins + curBinY]);
+//    	}
+//    	printf("\n");
+//    }
+//    printf("\n");
+
 }
 
 double entropy1d(const double *x, const double *knots, double *weights, int numSamples, int splineOrder, int numBins) {
