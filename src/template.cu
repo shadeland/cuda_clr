@@ -270,7 +270,7 @@ int main(int argc, char **argv)
 	float *d_entropies1d = 0;
 	float *h_data = 0;
 	float *d_hist2d = 0;
-	float *h_clrMat = 0
+	float *h_clrMat = 0;
 
 	// setup a time to calc the time
 	StopWatchInterface *timer = 0;
@@ -279,7 +279,7 @@ int main(int argc, char **argv)
 	h_data = (float *)calloc(NUMVARS * NUMSAMPLES, sizeof(float));
 	h_out = (float *)calloc(NUMMI, sizeof(float));
 	h_entrop1d = (float *)calloc(NUMVARS, sizeof(float));
-	h_clrMat =  (float *)calloc(NUMVARS, NUMVARS, sizeof(float));
+	h_clrMat =  (float *)calloc(NUMVARS*NUMVARS, sizeof(float));
 
 	getRandomData(h_data, NUMSAMPLES, NUMVARS, 1);// generate random data
 
@@ -339,6 +339,8 @@ int main(int argc, char **argv)
 
 
 
+
+
 	if (V >= 1)
 	{
 		fp = fopen("loggpu", "w+");
@@ -355,6 +357,19 @@ int main(int argc, char **argv)
 		   NUMSAMPLES, NUMVARS, NUMBINS, TPBX, TPBX, BATCHSIZE);
 	printf("Processing Total Time GPU: %f (ms)\n", sdkGetTimerValue(&timer));
 
+
+	///Done with the gpu??? ?
+
+	/// generate CLRWeighted 
+	clrUnweightedStouffer(h_out, h_clrMat, NUMVARS);
+
+
+	if (V >= 1)
+	{
+		fp = fopen("loggpu", "w+");
+		fprintMat(fp, h_out, "CLR MAT", NUMVARS, NUMVARS);
+		fclose(fp);
+	}
 	// cudaMemcpy(h_out, d_out, NUMMI*sizeof(float), cudaMemcpyDeviceToHost);
 
 	//	sdkResetTimer(&timer);
