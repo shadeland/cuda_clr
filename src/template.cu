@@ -38,6 +38,8 @@
 
 #include "template_cpu.h"
 #include "InfoKit2.h"
+// #include <fstream>
+
 ////////////////////////////////////////////////////////////////////////////////
 // declaration, forward
 #define CNUMSAMPLES 400 //
@@ -57,6 +59,7 @@ int TPBX;
 int TOTAL;
 int SPLINEORDER;
 int V;
+char *FILENAME; 
 FILE *fp;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,8 +134,7 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d, float *
 	float H1Y = d_entropies1d[globalMiY];
 	// printf("%0.2f, %0.2f \n",  H1X , H1Y);
 
-	float MI = H1X+H1Y-H2D;
-
+	float MI = H1X + H1Y - H2D;
 
 	// __syncthreads();
 	d_out[(NUMVARS * globalMiX) + globalMiY] = MI;
@@ -175,13 +177,11 @@ void runBatch(int batchX, int batchY, float *d_w, float *d_out, float *d_entropi
 		printf("Processing time GPU for batch: %f (ms)\n", sdkGetTimerValue(&timer));
 }
 
-
-
 void _clacNumBinsint(float *data, int numVars, int numSamples, float binMultiplier)
 {
 	if (NUMBINS != -1)
 	{
-		return ;
+		return;
 	}
 	int *binCount;
 	binCount = calcNumBins(data, numVars, numSamples, binMultiplier);
@@ -209,6 +209,7 @@ void clac_numbins_entropies_wights(float *data, float *entropies, float *w)
 	const float *hist1 = (float *)calloc(NUMBINS, sizeof(float));
 	float *e2d = (float *)calloc(NUMVARS * NUMVARS, sizeof(float));
 	float *miMat = (float *)calloc(NUMVARS * NUMVARS, sizeof(float));
+	float *miClrMat = (float *)calloc(NUMVARS * NUMVARS, sizeof(float));
 	////CALC KNOTS
 	knotVector(knots, NUMBINS, SPLINEORDER);
 
@@ -227,17 +228,41 @@ void clac_numbins_entropies_wights(float *data, float *entropies, float *w)
 		// sdkStopTimer(&timer);
 	}
 
-	//calc mi on cpu
-	// sdkStartTimer(&timer);
-	// miSubMatrix(data, miMat, NUMBINS, NUMVARS, NUMSAMPLES, SPLINEORDER, 0,NUMVARS);
-	// sdkStopTimer(&timer);
-	// miMat = transpose(miMat, NUMVARS,NUMVARS);
-	// printf("Processing time CPU : %f(ms)\n", sdkGetTimerValue(&timer));
-	// if(V >= 1){
-	// 	fp = fopen("logcpu","w+");
-	// 	fprintMat(fp,miMat, "MI CPU", NUMVARS, NUMVARS);
-	// 	fclose(fp);
-	// }
+	//calc mi clr on cpu
+	sdkStartTimer(&timer);
+	miSubMatrix(data, miMat, NUMBINS, NUMVARS, NUMSAMPLES, SPLINEORDER, 0, NUMVARS);
+	clrUnweightedStouffer(miMat, miClrMat, NUMVARS);
+	sdkStopTimer(&timer);
+	miMat = transpose(miMat, NUMVARS, NUMVARS);
+	printf("Processing time CPU : %f(ms)\n", sdkGetTimerValue(&timer));
+	if (V >= 1)
+	{
+		fp = fopen("logcpu", "w+");
+		fprintMat(fp, miClrMat, "MI CLR CPU", NUMVARS, NUMVARS);
+		fclose(fp);
+	}
+}
+
+void loadCsv(char *filename, float *data, char* sparator)
+{
+	std::ifstream in("test_data.csv");
+	int curRow = 0;
+	int curCol = 0;
+	char *curSep;
+	char *dup; 
+	std::string line; 
+	while (std::getline(in, line))
+	{	
+		dup = strdup(line.c_str());
+		curSep = strtok(dup, sparator); /* for each line, break apart the line on the comma */
+		while (curSep != NULL)
+		{
+			data[curRow*NUMVARS+curCol] = atof(curSep); /* since one column is one gene, have to do a little math to get the indexes correct*/
+			curSep = strtok(NULL, sparator);
+			curCol++;
+		}
+		curRow++;
+	}
 }
 
 int main(int argc, char **argv)
@@ -251,12 +276,11 @@ int main(int argc, char **argv)
 	NUMVARS = atoi(argv[2]);	// powers of two for now
 	NUMMI = NUMVARS * NUMVARS;
 	NUMBINS = atoi(argv[3]);
-
+	FILENAME = argv[7];
 	BATCHSIZE = atoi(argv[4]); //128*128 batch size for hist mem management
 	TPBX = atoi(argv[5]);	  //threads per block dim 16*16
 	V = atoi(argv[6]);
 	SPLINEORDER = 3;
-	
 
 	// if (V >= 1)
 	// 	fp = fopen("log", "w+");
@@ -279,31 +303,29 @@ int main(int argc, char **argv)
 	h_data = (float *)calloc(NUMVARS * NUMSAMPLES, sizeof(float));
 	h_out = (float *)calloc(NUMMI, sizeof(float));
 	h_entrop1d = (float *)calloc(NUMVARS, sizeof(float));
-	h_clrMat =  (float *)calloc(NUMVARS*NUMVARS, sizeof(float));
+	h_clrMat = (float *)calloc(NUMVARS * NUMVARS, sizeof(float));
 
-	getRandomData(h_data, NUMSAMPLES, NUMVARS, 1);// generate random data
+	printf("Reading %s File:",FILENAME);
+	
 
-	// calc num bins 
-	_clacNumBinsint(h_data, NUMVARS, NUMSAMPLES,1);
+	getRandomData(h_data, NUMSAMPLES, NUMVARS, 1); // generate random data
+	loadCsv(FILENAME, h_data, ",");
+	printMat(h_data, "DATA", NUMVARS, NUMSAMPLES);
+	// calc num bins
+	_clacNumBinsint(h_data, NUMVARS, NUMSAMPLES, 1);
 
 	TOTAL = NUMSAMPLES * NUMVARS * NUMBINS;
 	h_w = (float *)calloc(TOTAL, sizeof(float)); // host mem for weights /// why float ? ???
 
-	
 	// Allocate device memory to store the output array with size number  samples
 	// 1d for now
 	cudaMalloc(&d_out, NUMMI * sizeof(float));
-	cudaMemset(d_out,0 ,NUMMI * sizeof(float));
+	cudaMemset(d_out, 0, NUMMI * sizeof(float));
 	cudaMalloc(&d_entropies1d, NUMVARS * sizeof(float));
 	cudaMalloc(&d_w, TOTAL * sizeof(float));
 	cudaMalloc(&d_hist2d, NUMBINS * NUMBINS * BATCHSIZE * BATCHSIZE * sizeof(float));
 
-	
-	
-	
-
 	// gen random data
-	
 
 	if (V >= 3)
 		fprintMat(fp, h_data, "DATA MAT", NUMVARS, NUMSAMPLES);
@@ -321,7 +343,6 @@ int main(int argc, char **argv)
 	cudaMemcpy(d_w, h_w, TOTAL * sizeof(float), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_entropies1d, h_entrop1d, NUMVARS * sizeof(float), cudaMemcpyHostToDevice);
 
-	
 	// runing batches
 
 	int numBatches = (NUMVARS + BATCHSIZE - 1) / BATCHSIZE;
@@ -336,10 +357,6 @@ int main(int argc, char **argv)
 	}
 	sdkStopTimer(&timer);
 	cudaMemcpy(h_out, d_out, NUMMI * sizeof(float), cudaMemcpyDeviceToHost);
-
-
-
-
 
 	if (V >= 1)
 	{
@@ -357,26 +374,83 @@ int main(int argc, char **argv)
 		   NUMSAMPLES, NUMVARS, NUMBINS, TPBX, TPBX, BATCHSIZE);
 	printf("Processing Total Time GPU: %f (ms)\n", sdkGetTimerValue(&timer));
 
-
 	///Done with the gpu??? ?
 
-	/// generate CLRWeighted 
+	/// generate CLRWeighted
+	// it needs to be transposed??
+	h_out = transpose(h_out, NUMVARS, NUMVARS);
 	clrUnweightedStouffer(h_out, h_clrMat, NUMVARS);
-
 
 	if (V >= 1)
 	{
 		fp = fopen("loggpu", "w+");
-		fprintMat(fp, h_out, "CLR MAT", NUMVARS, NUMVARS);
+		fprintMat(fp, h_clrMat, "CLR MAT", NUMVARS, NUMVARS);
 		fclose(fp);
 	}
 	// cudaMemcpy(h_out, d_out, NUMMI*sizeof(float), cudaMemcpyDeviceToHost);
 
-	//	sdkResetTimer(&timer);
-	//	sdkStartTimer(&timer);
-	//	distanceCpu();
-	//	sdkStopTimer(&timer);
-	//	printf("Processing time CPU: %f (ms)\n", sdkGetTimerValue(&timer));
+	/************************************************************************************************
+   get and sort the output */
+
+	/***** A more efficient way to do it would be as in the Java example "BasicCorrelation" *****/
+
+	/* from the CLR matrix, select out all TF to target gene interactions and place them into S */
+	float *C = h_clrMat;
+	int numPossibleEdges = (NUMVARS * NUMVARS);
+	float *S = (float *)calloc(numPossibleEdges, sizeof(float));
+	int i, j, l, f;
+	f = 0;
+	for (i = 0; i < NUMVARS; i++)
+	{
+		for (j = 0; j < NUMVARS; j++)
+		{
+			if (i != j)
+			{
+				S[f] = C[i * NUMVARS + j];
+				++f;
+			}
+		}
+	}
+
+	qsort(S, numPossibleEdges, sizeof(float), compare_floats);
+
+	int CUT = numPossibleEdges;
+
+	f = 0;
+
+	/* loop through the ranked set of CLR values and print out any  TF to target prediction
+     that matches the current CLR score.  Stop at 100,000 and print to the output file. */
+
+	FILE *out = fopen("logedges", "w");
+	float prev = 0;
+	for (int l = numPossibleEdges - 1; l > 0; --l)
+	{
+		if (S[l] != prev)
+		{ /* make sure we are not repeating predictions. this will avoid printing predictions more than once */
+			prev = S[l];
+			for (i = 0; i < NUMSAMPLES; i++)
+			{
+				for (j = 0; j < NUMVARS; j++)
+				{
+					if (i != j)
+					{
+						if (C[i * NUMVARS + j] == S[l])
+						{
+							fprintf(out, "%d\t%d\t%f\n", i, j, C[i * NUMVARS + j]);
+							++f;
+							/* If the cutoff is reached, break the three loops */
+							if (f >= CUT)
+							{
+								j = NUMVARS;
+								i = NUMVARS;
+								l = -1;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
 	cudaFree(d_out); // Free the memory
 	return 0;

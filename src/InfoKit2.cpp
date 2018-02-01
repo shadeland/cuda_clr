@@ -282,8 +282,8 @@ void clrUnweightedStouffer(float *miMatrix, float *clrMatrix, int numVars) {
     m[i] = meanf(curMI + numVars * i, numVars);
     s[i] = stdf(curMI + numVars * i, numVars);
   }
-  for (i = 0; i < numVars - 1; i++) {
-    for (j = i + 1; j < numVars; j++) {
+  for (i = 0; i < numVars-1; i++) {
+    for (j = i + 1; j < numVars ; j++) {
       a = (curMI[i + numVars * j] - m[i])/s[i];
       b = (curMI[i + numVars * j] - m[j])/s[j];
       /* printf("a; %f, b: %f\n", a, b); */
