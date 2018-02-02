@@ -2,3 +2,4 @@
 
 sshpass -p 'mamal65Serent!' scp -r *.c *.h *.cu Makefile shahrezaeima@tesla.cs.vcu.edu:/home/shahrezaeima/projects/playground/cuda_clr_remote/src
 
+sshpass -p 'mamal65Serent!' ssh shahrezaeima@tesla.cs.vcu.edu ' cd /home/shahrezaeima/projects/playground/cuda_clr_remote/src && make'

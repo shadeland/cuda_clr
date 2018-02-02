@@ -38,6 +38,7 @@
 
 #include "template_cpu.h"
 #include "InfoKit2.h"
+#include "FileUtil.h"
 // #include <fstream>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -138,6 +139,7 @@ __global__ void histo2dGlobal(float *d_out, float *d_w, float *d_hist2d, float *
 
 	// __syncthreads();
 	d_out[(NUMVARS * globalMiX) + globalMiY] = MI;
+	d_out[(NUMVARS * globalMiY) + globalMiX] = MI;
 	//	printf("%d OUT %0.2f H2D",NUMVARS * globalMiX + globalMiY, H2D);
 }
 
@@ -183,7 +185,7 @@ void _clacNumBinsint(float *data, int numVars, int numSamples, float binMultipli
 	{
 		return;
 	}
-	int *binCount;
+	int *binCount ;
 	binCount = calcNumBins(data, numVars, numSamples, binMultiplier);
 	if (NUMBINS == -1)
 	{
@@ -230,7 +232,7 @@ void clac_numbins_entropies_wights(float *data, float *entropies, float *w)
 
 	//calc mi clr on cpu
 	sdkStartTimer(&timer);
-	miSubMatrix(data, miMat, NUMBINS, NUMVARS, NUMSAMPLES, SPLINEORDER, 0, NUMVARS);
+	miSubMatrix(data, miMat, NUMBINS, NUMVARS, NUMSAMPLES, SPLINEORDER, 0, NUMVARS-1);
 	clrUnweightedStouffer(miMat, miClrMat, NUMVARS);
 	sdkStopTimer(&timer);
 	miMat = transpose(miMat, NUMVARS, NUMVARS);
@@ -245,24 +247,93 @@ void clac_numbins_entropies_wights(float *data, float *entropies, float *w)
 
 void loadCsv(char *filename, float *data, char* sparator)
 {
-	std::ifstream in("test_data.csv");
+	
 	int curRow = 0;
 	int curCol = 0;
-	char *curSep;
+	gzFile input;
+
+	char *fileBuf, **lines, **linesTf, *headSep, *curSep, *curLine, *curLineTf, **rowNames;
 	char *dup; 
-	std::string line; 
-	while (std::getline(in, line))
-	{	
-		dup = strdup(line.c_str());
-		curSep = strtok(dup, sparator); /* for each line, break apart the line on the comma */
-		while (curSep != NULL)
-		{
-			data[curRow*NUMVARS+curCol] = atof(curSep); /* since one column is one gene, have to do a little math to get the indexes correct*/
-			curSep = strtok(NULL, sparator);
-			curCol++;
-		}
-		curRow++;
-	}
+	int fLength;
+	int numSamples, numVars,f =0;
+	/* returns the length of the file.  This is needed to initiate the memory for the filebuffer.
+     Also returns the number of samples (conditions) and the number of variables (genes)*/
+  fLength = sizeArray(filename, &numSamples, &numVars);
+  numSamples--; /* subtract 1 to account for the first row in the file which is the row of gene id */
+  printf("There are %d genes and %d experimental conditions in file %s\n", numVars, numSamples, filename);
+
+  /* initiate the fileBuffer and read the entire file in to the fileBuffer*/
+  input = gzopen(filename, "rb");
+  fileBuf = (char *)calloc(fLength + 1, sizeof(char));
+  /* BUG FIXED: X and lines are uninitialized */
+  if (fileBuf == NULL) /* || X == NULL || lines == NULL) */
+  {
+    fprintf(stderr, "Cannot allocate a buffer of size %ld bytes for file reading.\n", fLength + 1);
+    return ;
+  }
+  gzread(input, fileBuf, fLength); /* Read the entire file into fileBuf */
+  gzclose(input);
+
+  /* the fileBuffer is a pointer, so to get at each line, you have to tokenize and create a pointer to a pointer with lines
+     The + 1 is to take account for the first row. */
+  lines = (char **)calloc((numSamples+1), sizeof(char *));
+
+  /* I was trying the same idea as with lines to create a pointer to the pointer containing the gene names */
+  rowNames = (char **)calloc(numVars, sizeof(char *));
+
+  /* break the fileBuffer up by new lines so "lines" now contains each individual row in the file */
+  curLine = strtok(fileBuf, "\n");
+  
+  while (curLine != NULL)
+  {
+    lines[f] = curLine;
+    curLine = strtok(NULL, "\n");
+    ++f;
+  }
+
+  /* parse the values and assingn them to X, rember that samples are rows and genes are columns */
+  
+  for (int l = 1; l < (numSamples + 1); ++l)
+  {
+    f = l;
+    curSep = strtok(lines[l], sparator); /* for each line, break apart the line on the tabs */
+    while (curSep != NULL)
+    {
+      --f;
+      data[f] = atof(curSep); /* since one column is one gene, have to do a little math to get the indexes correct*/
+      f += numSamples + 1;
+      curSep = strtok(NULL, sparator);
+    }
+  }
+
+  /* in the end, X should contain a flattened matrix of gene expression values, where the values for gene 2 are placed sequentially
+     after gene 1, and gene 3 after gene 2, etc. */
+
+  /* tokenize the first row to get the gene ids into "rowNames" */
+  headSep = strtok(lines[0], sparator);
+  f = 0;
+  while (headSep != NULL)
+  {
+    rowNames[f] = headSep;
+    ++f;
+    headSep = strtok(NULL, sparator);
+  }
+
+  free(lines);
+
+
+	// while (std::getline(in, line))
+	// {	
+	// 	dup = strdup(line.c_str());
+	// 	curSep = strtok(dup, sparator); /* for each line, break apart the line on the comma */
+	// 	while (curSep != NULL)
+	// 	{
+	// 		data[curRow*NUMVARS+curCol] = atof(curSep); /* since one column is one gene, have to do a little math to get the indexes correct*/
+	// 		curSep = strtok(NULL, sparator);
+	// 		curCol++;
+	// 	}
+	// 	curRow++;
+	// }
 }
 
 int main(int argc, char **argv)
@@ -308,9 +379,12 @@ int main(int argc, char **argv)
 	printf("Reading %s File:",FILENAME);
 	
 
-	getRandomData(h_data, NUMSAMPLES, NUMVARS, 1); // generate random data
+	// getRandomData(h_data, NUMSAMPLES, NUMVARS, 1); // generate random data
+
+	
+	//Read Data from csv file 
 	loadCsv(FILENAME, h_data, ",");
-	printMat(h_data, "DATA", NUMVARS, NUMSAMPLES);
+	// printMat(h_data, "DATA", NUMVARS, NUMSAMPLES);
 	// calc num bins
 	_clacNumBinsint(h_data, NUMVARS, NUMSAMPLES, 1);
 
@@ -378,7 +452,7 @@ int main(int argc, char **argv)
 
 	/// generate CLRWeighted
 	// it needs to be transposed??
-	h_out = transpose(h_out, NUMVARS, NUMVARS);
+	// h_out = transpose(h_out, NUMVARS, NUMVARS);
 	clrUnweightedStouffer(h_out, h_clrMat, NUMVARS);
 
 	if (V >= 1)
@@ -395,62 +469,62 @@ int main(int argc, char **argv)
 	/***** A more efficient way to do it would be as in the Java example "BasicCorrelation" *****/
 
 	/* from the CLR matrix, select out all TF to target gene interactions and place them into S */
-	float *C = h_clrMat;
-	int numPossibleEdges = (NUMVARS * NUMVARS);
-	float *S = (float *)calloc(numPossibleEdges, sizeof(float));
-	int i, j, l, f;
-	f = 0;
-	for (i = 0; i < NUMVARS; i++)
-	{
-		for (j = 0; j < NUMVARS; j++)
-		{
-			if (i != j)
-			{
-				S[f] = C[i * NUMVARS + j];
-				++f;
-			}
-		}
-	}
+	// float *C = h_clrMat;
+	// int numPossibleEdges = (NUMVARS * NUMVARS);
+	// float *S = (float *)calloc(numPossibleEdges, sizeof(float));
+	// int i, j, l, f;
+	// f = 0;
+	// for (i = 0; i < NUMVARS; i++)
+	// {
+	// 	for (j = 0; j < NUMVARS; j++)
+	// 	{
+	// 		if (i != j)
+	// 		{
+	// 			S[f] = C[i * NUMVARS + j];
+	// 			++f;
+	// 		}
+	// 	}
+	// }
 
-	qsort(S, numPossibleEdges, sizeof(float), compare_floats);
+	// qsort(S, numPossibleEdges, sizeof(float), compare_floats);
 
-	int CUT = numPossibleEdges;
+	// int CUT = numPossibleEdges;
 
-	f = 0;
+	// f = 0;
 
-	/* loop through the ranked set of CLR values and print out any  TF to target prediction
-     that matches the current CLR score.  Stop at 100,000 and print to the output file. */
+	// /* loop through the ranked set of CLR values and print out any  TF to target prediction
+    //  that matches the current CLR score.  Stop at 100,000 and print to the output file. */
 
-	FILE *out = fopen("logedges", "w");
-	float prev = 0;
-	for (int l = numPossibleEdges - 1; l > 0; --l)
-	{
-		if (S[l] != prev)
-		{ /* make sure we are not repeating predictions. this will avoid printing predictions more than once */
-			prev = S[l];
-			for (i = 0; i < NUMSAMPLES; i++)
-			{
-				for (j = 0; j < NUMVARS; j++)
-				{
-					if (i != j)
-					{
-						if (C[i * NUMVARS + j] == S[l])
-						{
-							fprintf(out, "%d\t%d\t%f\n", i, j, C[i * NUMVARS + j]);
-							++f;
-							/* If the cutoff is reached, break the three loops */
-							if (f >= CUT)
-							{
-								j = NUMVARS;
-								i = NUMVARS;
-								l = -1;
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+	// FILE *out = fopen("logedges", "w");
+	// float prev = 0;
+	// for (int l = numPossibleEdges - 1; l > 0; --l)
+	// {
+	// 	if (S[l] != prev)
+	// 	{ /* make sure we are not repeating predictions. this will avoid printing predictions more than once */
+	// 		prev = S[l];
+	// 		for (i = 0; i < NUMSAMPLES; i++)
+	// 		{
+	// 			for (j = 0; j < NUMVARS; j++)
+	// 			{
+	// 				if (i != j)
+	// 				{
+	// 					if (C[i * NUMVARS + j] == S[l])
+	// 					{
+	// 						fprintf(out, "%d\t%d\t%f\n", i, j, C[i * NUMVARS + j]);
+	// 						++f;
+	// 						/* If the cutoff is reached, break the three loops */
+	// 						if (f >= CUT)
+	// 						{
+	// 							j = NUMVARS;
+	// 							i = NUMVARS;
+	// 							l = -1;
+	// 						}
+	// 					}
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// }
 
 	cudaFree(d_out); // Free the memory
 	return 0;
